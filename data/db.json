@@ -1,0 +1,116 @@
+{
+  "stores": [
+    {
+      "id": "419213fa-f764-491c-849d-f7c3b561ccee",
+      "name": "????",
+      "address": "??????xxx?123?",
+      "createdAt": "2026-06-15T22:59:33.166Z"
+    }
+  ],
+  "courses": [
+    {
+      "id": "9f91840f-1363-48dd-a179-0588e4957c44",
+      "name": "Python??????",
+      "storeId": "419213fa-f764-491c-849d-f7c3b561ccee",
+      "description": "??6-12???",
+      "category": "??",
+      "createdAt": "2026-06-15T22:59:33.192Z"
+    }
+  ],
+  "courseSlots": [
+    {
+      "id": "6282f770-5e0f-4ed4-a641-b589a9385426",
+      "courseId": "9f91840f-1363-48dd-a179-0588e4957c44",
+      "startTime": "2026-06-20T10:00:00",
+      "endTime": "2026-06-20T12:00:00",
+      "capacity": 2,
+      "enrolledCount": 2,
+      "createdAt": "2026-06-15T22:59:33.197Z"
+    }
+  ],
+  "students": [
+    {
+      "id": "e0151c0b-46c1-496d-a109-39c54675a663",
+      "name": "???",
+      "phone": "13800000001",
+      "createdAt": "2026-06-15T22:59:33.224Z"
+    },
+    {
+      "id": "4401f9e1-b909-4df9-a1b7-bf1af7468350",
+      "name": "???",
+      "phone": "13800000002",
+      "createdAt": "2026-06-15T22:59:33.248Z"
+    },
+    {
+      "id": "4a1b3dcc-d680-4c94-b27e-8484e8cf9c8e",
+      "name": "???",
+      "phone": "13800000003",
+      "createdAt": "2026-06-15T22:59:33.261Z"
+    }
+  ],
+  "waitlistEntries": [
+    {
+      "id": "fffa1793-3160-440f-922c-c6d0980e8332",
+      "studentId": "e0151c0b-46c1-496d-a109-39c54675a663",
+      "courseId": "9f91840f-1363-48dd-a179-0588e4957c44",
+      "slotId": "6282f770-5e0f-4ed4-a641-b589a9385426",
+      "status": "confirmed",
+      "queuePosition": 1,
+      "joinedAt": "2026-06-15T22:59:33.229Z",
+      "notifiedAt": "2026-06-15T23:03:08.203Z",
+      "confirmedAt": "2026-06-15T23:08:30.004Z",
+      "cancelledAt": null,
+      "expireAt": "2026-06-15T23:33:08.203Z"
+    },
+    {
+      "id": "28f0aa38-9243-4bcb-b303-be1c0c0862bd",
+      "studentId": "4401f9e1-b909-4df9-a1b7-bf1af7468350",
+      "courseId": "9f91840f-1363-48dd-a179-0588e4957c44",
+      "slotId": "6282f770-5e0f-4ed4-a641-b589a9385426",
+      "status": "cancelled",
+      "queuePosition": 2,
+      "joinedAt": "2026-06-15T22:59:33.255Z",
+      "notifiedAt": null,
+      "confirmedAt": null,
+      "cancelledAt": "2026-06-15T23:08:30.022Z",
+      "expireAt": null
+    },
+    {
+      "id": "d5a9c91a-8967-46d5-81a3-5aba13d96eab",
+      "studentId": "4a1b3dcc-d680-4c94-b27e-8484e8cf9c8e",
+      "courseId": "9f91840f-1363-48dd-a179-0588e4957c44",
+      "slotId": "6282f770-5e0f-4ed4-a641-b589a9385426",
+      "status": "waiting",
+      "queuePosition": 1,
+      "joinedAt": "2026-06-15T22:59:33.273Z",
+      "notifiedAt": null,
+      "confirmedAt": null,
+      "cancelledAt": null,
+      "expireAt": null
+    }
+  ],
+  "notifications": [
+    {
+      "id": "6d0220ab-0976-4cd0-a25a-9f06a1239bbe",
+      "waitlistEntryId": "fffa1793-3160-440f-922c-c6d0980e8332",
+      "studentId": "e0151c0b-46c1-496d-a109-39c54675a663",
+      "courseId": "9f91840f-1363-48dd-a179-0588e4957c44",
+      "slotId": "6282f770-5e0f-4ed4-a641-b589a9385426",
+      "channel": "sms",
+      "status": "confirmed",
+      "message": "【候补补位通知】尊敬的???，您候补的课程「Python??????」(2026/6/20 10:00:00 - 2026/6/20 12:00:00)有名额释放！请于2026/6/16 07:33:08前确认，逾期将顺延至下一位学员。",
+      "sentAt": "2026-06-15T23:03:08.203Z",
+      "confirmedAt": "2026-06-15T23:08:30.005Z",
+      "expireAt": "2026-06-15T23:33:08.203Z",
+      "result": "学员已确认"
+    }
+  ],
+  "config": {
+    "maxWaitlistPerStudent": 3,
+    "notificationTimeoutMinutes": 30,
+    "notificationChannels": [
+      "sms",
+      "app"
+    ]
+  }
+}
