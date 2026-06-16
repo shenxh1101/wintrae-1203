@@ -26,6 +26,7 @@ export class NotificationService {
       message,
       sentAt: now.toISOString(),
       confirmedAt: null,
+      declinedAt: null,
       expireAt: expireAt.toISOString(),
       result: null
     };
@@ -43,12 +44,13 @@ export class NotificationService {
   }
 
   markConfirmedByWaitlistEntry(waitlistEntryId: string): void {
+    const now = new Date().toISOString();
     const notifications = repository.getNotificationsByWaitlistEntryId(waitlistEntryId);
     for (const n of notifications) {
       if (n.status === 'sent' || n.status === 'pending') {
         n.status = 'confirmed';
-        n.confirmedAt = new Date().toISOString();
-        n.result = '学员已确认';
+        n.confirmedAt = now;
+        n.result = '学员已确认补位成功';
         repository.updateNotification(n);
       }
     }
@@ -59,7 +61,31 @@ export class NotificationService {
     for (const n of notifications) {
       if (n.status === 'sent' || n.status === 'pending') {
         n.status = 'expired';
-        n.result = '确认超时，已顺延至下一位候补';
+        n.result = '学员超时未确认，已顺延至下一位候补';
+        repository.updateNotification(n);
+      }
+    }
+  }
+
+  markDeclinedByWaitlistEntry(waitlistEntryId: string): void {
+    const now = new Date().toISOString();
+    const notifications = repository.getNotificationsByWaitlistEntryId(waitlistEntryId);
+    for (const n of notifications) {
+      if (n.status === 'sent' || n.status === 'pending') {
+        n.status = 'declined';
+        n.declinedAt = now;
+        n.result = '学员主动放弃补位，已顺延至下一位候补';
+        repository.updateNotification(n);
+      }
+    }
+  }
+
+  markCancelledByWaitlistEntry(waitlistEntryId: string): void {
+    const notifications = repository.getNotificationsByWaitlistEntryId(waitlistEntryId);
+    for (const n of notifications) {
+      if (n.status === 'sent' || n.status === 'pending') {
+        n.status = 'expired';
+        n.result = '学员主动取消候补队列';
         repository.updateNotification(n);
       }
     }

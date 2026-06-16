@@ -1,8 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { repository } from '../repository';
 import {
-  Student, Course, CourseSlot, WaitlistEntry, Notification,
-  WaitlistStatus, NotificationStatus, NotificationChannel
+  Student, Course, CourseSlot, WaitlistEntry, Notification, WaitlistRescheduleResult
 } from '../types';
 
 export interface WaitlistPositionInfo {
@@ -17,14 +16,18 @@ interface INotificationService {
   sendNotification(entry: WaitlistEntry): Notification;
   markConfirmedByWaitlistEntry(waitlistEntryId: string): void;
   markExpiredByWaitlistEntry(waitlistEntryId: string): void;
+  markDeclinedByWaitlistEntry(waitlistEntryId: string): void;
+  markCancelledByWaitlistEntry(waitlistEntryId: string): void;
 }
 
 export class WaitlistService {
   private slotService: any;
+  private courseService: any;
   private notificationService: INotificationService;
 
-  constructor(slotService: any, notificationService: INotificationService) {
+  constructor(slotService: any, courseService: any, notificationService: INotificationService) {
     this.slotService = slotService;
+    this.courseService = courseService;
     this.notificationService = notificationService;
   }
 
@@ -33,6 +36,10 @@ export class WaitlistService {
     course: Course,
     slot: CourseSlot
   ): WaitlistEntry {
+    if (slot.courseId !== course.id) {
+      throw new Error(`参数不匹配：该时间段（slotId=${slot.id}）不属于课程「${course.name}」(courseId=${course.id})，请检查 courseId 与 slotId 是否对应`);
+    }
+
     const config = repository.getConfig();
 
     if (this.slotService.hasAvailableSlot(slot.id)) {
@@ -41,13 +48,13 @@ export class WaitlistService {
 
     const activeCount = repository.getActiveWaitlistCountByStudentId(student.id);
     if (activeCount >= config.maxWaitlistPerStudent) {
-      throw new Error(`每位学员最多只能候补 ${config.maxWaitlistPerStudent} 个课程`);
+      throw new Error(`每位学员最多只能候补 ${config.maxWaitlistPerStudent} 个课程，您当前已有 ${activeCount} 个有效候补`);
     }
 
     const existingActive = repository.getActiveWaitlistBySlotId(slot.id)
       .find(e => e.studentId === student.id);
     if (existingActive) {
-      throw new Error('您已在该课程时间段的候补队列中');
+      throw new Error(`您已在该课程时间段的候补队列中（候补ID：${existingActive.id}，当前排位：${existingActive.queuePosition}）`);
     }
 
     const waitingEntries = repository.getWaitingWaitlistBySlotId(slot.id);
@@ -64,6 +71,10 @@ export class WaitlistService {
       notifiedAt: null,
       confirmedAt: null,
       cancelledAt: null,
+      declinedAt: null,
+      rescheduledAt: null,
+      rescheduledToEntryId: null,
+      rescheduledFromEntryId: null,
       expireAt: null
     };
 
@@ -75,15 +86,38 @@ export class WaitlistService {
     const entry = repository.getWaitlistEntryById(entryId);
     if (!entry) return undefined;
 
-    if (entry.status === 'cancelled' || entry.status === 'confirmed' || entry.status === 'enrolled' || entry.status === 'expired') {
-      throw new Error('该候补状态不可取消');
+    if (entry.status === 'cancelled' || entry.status === 'confirmed' || entry.status === 'enrolled' || entry.status === 'expired' || entry.status === 'declined' || entry.status === 'rescheduled') {
+      throw new Error(`该候补当前状态为「${this.statusLabel(entry.status)}」，不可取消`);
     }
 
     entry.status = 'cancelled';
     entry.cancelledAt = new Date().toISOString();
     repository.updateWaitlistEntry(entry);
 
+    this.notificationService.markCancelledByWaitlistEntry(entryId);
     this.rebalanceQueue(entry.slotId);
+    return entry;
+  }
+
+  declineWaitlist(entryId: string): WaitlistEntry | undefined {
+    const entry = repository.getWaitlistEntryById(entryId);
+    if (!entry) return undefined;
+
+    if (entry.status !== 'notified') {
+      if (entry.status === 'waiting') {
+        throw new Error('该候补尚未收到补位邀请，如需退出请使用「取消候补」功能');
+      }
+      throw new Error(`该候补当前状态为「${this.statusLabel(entry.status)}」，不可执行放弃操作`);
+    }
+
+    entry.status = 'declined';
+    entry.declinedAt = new Date().toISOString();
+    repository.updateWaitlistEntry(entry);
+
+    this.notificationService.markDeclinedByWaitlistEntry(entryId);
+    this.rebalanceQueue(entry.slotId);
+    this.notifyNextInQueue(entry.slotId, 1);
+
     return entry;
   }
 
@@ -92,14 +126,19 @@ export class WaitlistService {
     if (!entry) return undefined;
 
     if (entry.status !== 'notified') {
-      throw new Error('只有已通知的候补才能确认');
+      if (entry.status === 'waiting') {
+        throw new Error('该候补尚未收到补位邀请，请耐心等待通知');
+      }
+      throw new Error(`该候补当前状态为「${this.statusLabel(entry.status)}」，不可执行确认操作`);
     }
 
     if (entry.expireAt && new Date(entry.expireAt) < new Date()) {
       entry.status = 'expired';
       repository.updateWaitlistEntry(entry);
+      this.notificationService.markExpiredByWaitlistEntry(entry.id);
       this.rebalanceQueue(entry.slotId);
-      throw new Error('确认已超时，候补资格已顺延至下一位');
+      this.notifyNextInQueue(entry.slotId, 1);
+      throw new Error('确认已超时，候补资格已顺延至下一位学员');
     }
 
     entry.status = 'confirmed';
@@ -108,14 +147,103 @@ export class WaitlistService {
 
     this.notificationService.markConfirmedByWaitlistEntry(entryId);
     this.slotService.incrementEnrolled(entry.slotId);
+    this.rebalanceQueue(entry.slotId);
 
     return entry;
+  }
+
+  rescheduleWaitlist(entryId: string, newSlotId: string): WaitlistRescheduleResult | undefined {
+    const oldEntry = repository.getWaitlistEntryById(entryId);
+    if (!oldEntry) return undefined;
+
+    if (oldEntry.status !== 'waiting' && oldEntry.status !== 'notified') {
+      throw new Error(`该候补当前状态为「${this.statusLabel(oldEntry.status)}」，仅「排队中」和「待确认」的候补可改期`);
+    }
+
+    const newSlot = repository.getCourseSlotById(newSlotId);
+    if (!newSlot) {
+      throw new Error(`目标时间段不存在（slotId=${newSlotId}）`);
+    }
+
+    if (newSlot.courseId !== oldEntry.courseId) {
+      throw new Error(`改期失败：目标时间段不属于同一门课程。原课程ID=${oldEntry.courseId}，目标时间段所属课程ID=${newSlot.courseId}`);
+    }
+
+    if (newSlot.id === oldEntry.slotId) {
+      throw new Error('改期失败：目标时间段与当前候补时间段相同');
+    }
+
+    if (this.slotService.hasAvailableSlot(newSlot.id)) {
+      throw new Error('目标时间段目前有名额，可直接报名无需候补');
+    }
+
+    const student = repository.getStudentById(oldEntry.studentId);
+    if (!student) {
+      throw new Error('学员信息不存在');
+    }
+
+    const existingActive = repository.getActiveWaitlistBySlotId(newSlot.id)
+      .find(e => e.studentId === student.id);
+    if (existingActive) {
+      throw new Error(`您已在目标时间段的候补队列中（候补ID：${existingActive.id}）`);
+    }
+
+    oldEntry.status = 'rescheduled';
+    oldEntry.rescheduledAt = new Date().toISOString();
+    repository.updateWaitlistEntry(oldEntry);
+    this.notificationService.markCancelledByWaitlistEntry(oldEntry.id);
+    this.rebalanceQueue(oldEntry.slotId);
+
+    const waitingEntries = repository.getWaitingWaitlistBySlotId(newSlot.id);
+    const nextPosition = waitingEntries.length + 1;
+
+    const newEntry: WaitlistEntry = {
+      id: uuidv4(),
+      studentId: student.id,
+      courseId: oldEntry.courseId,
+      slotId: newSlot.id,
+      status: 'waiting',
+      queuePosition: nextPosition,
+      joinedAt: new Date().toISOString(),
+      notifiedAt: null,
+      confirmedAt: null,
+      cancelledAt: null,
+      declinedAt: null,
+      rescheduledAt: null,
+      rescheduledToEntryId: null,
+      rescheduledFromEntryId: oldEntry.id,
+      expireAt: null
+    };
+    repository.addWaitlistEntry(newEntry);
+
+    oldEntry.rescheduledToEntryId = newEntry.id;
+    repository.updateWaitlistEntry(oldEntry);
+
+    const positionInfo = this.getWaitlistPosition(newEntry.id);
+
+    return {
+      oldEntry,
+      newEntry,
+      newPositionInfo: {
+        position: positionInfo?.position ?? nextPosition,
+        totalWaiting: positionInfo?.totalWaiting ?? nextPosition,
+        estimatedChance: positionInfo?.estimatedChance ?? 0
+      }
+    };
   }
 
   releaseSlot(slotId: string, count: number = 1): Notification[] {
     const slot = repository.getCourseSlotById(slotId);
     if (!slot) {
-      throw new Error('课程时间段不存在');
+      throw new Error(`课程时间段不存在（slotId=${slotId}）`);
+    }
+
+    if (!Number.isInteger(count) || count <= 0) {
+      throw new Error(`释放数量非法：count=${count}，请传入大于 0 的整数`);
+    }
+
+    if (count > slot.enrolledCount) {
+      throw new Error(`释放数量超过当前已报名人数：当前已报名 ${slot.enrolledCount} 人，请求释放 ${count} 人`);
     }
 
     this.slotService.decrementEnrolled(slotId, count);
@@ -141,9 +269,6 @@ export class WaitlistService {
 
   checkExpiredNotifications(): void {
     const now = new Date();
-    const config = repository.getConfig();
-    const timeoutMs = config.notificationTimeoutMinutes * 60 * 1000;
-
     const activeEntries = repository.getWaitlistEntries()
       .filter(e => e.status === 'notified' && e.expireAt);
 
@@ -204,7 +329,7 @@ export class WaitlistService {
 
   private calculateTurnoverRate(slotId: string): number {
     const entries = repository.getWaitlistBySlotId(slotId);
-    const completed = entries.filter(e => e.status === 'confirmed' || e.status === 'enrolled' || e.status === 'expired');
+    const completed = entries.filter(e => e.status === 'confirmed' || e.status === 'enrolled' || e.status === 'expired' || e.status === 'declined');
     if (completed.length === 0) return 0.3;
     const confirmed = completed.filter(e => e.status === 'confirmed' || e.status === 'enrolled');
     return confirmed.length / completed.length;
@@ -216,5 +341,19 @@ export class WaitlistService {
     if (position <= Math.ceil(capacity * turnoverRate)) return 70;
     if (position <= totalWaiting / 2) return 40;
     return 15;
+  }
+
+  private statusLabel(status: string): string {
+    const map: Record<string, string> = {
+      waiting: '排队中',
+      notified: '待确认',
+      confirmed: '补位成功',
+      enrolled: '已报名',
+      cancelled: '已取消',
+      expired: '已超时',
+      declined: '主动放弃',
+      rescheduled: '已改期'
+    };
+    return map[status] || status;
   }
 }

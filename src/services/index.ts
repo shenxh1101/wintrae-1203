@@ -8,7 +8,7 @@ const courseService = new CourseService();
 const courseSlotService = new CourseSlotService();
 const studentService = new StudentService();
 const notificationService = new NotificationService();
-const waitlistService = new WaitlistService(courseSlotService, notificationService);
+const waitlistService = new WaitlistService(courseSlotService, courseService, notificationService);
 const statisticsService = new StatisticsService();
 
 export {

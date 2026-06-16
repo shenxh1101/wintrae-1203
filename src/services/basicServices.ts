@@ -112,6 +112,20 @@ export class CourseSlotService {
     const slot = repository.getCourseSlotById(slotId);
     return slot ? slot.capacity - slot.enrolledCount : 0;
   }
+
+  setEnrolledCount(slotId: string, enrolledCount: number): CourseSlot | undefined {
+    const slot = repository.getCourseSlotById(slotId);
+    if (!slot) return undefined;
+    if (!Number.isInteger(enrolledCount) || enrolledCount < 0) {
+      throw new Error(`enrolledCount 必须是非负整数，当前传入 ${enrolledCount}`);
+    }
+    if (enrolledCount > slot.capacity) {
+      throw new Error(`enrolledCount (${enrolledCount}) 不能超过容量 capacity (${slot.capacity})`);
+    }
+    slot.enrolledCount = enrolledCount;
+    repository.updateCourseSlot(slot);
+    return slot;
+  }
 }
 
 export class StudentService {

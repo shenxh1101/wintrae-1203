@@ -31,7 +31,7 @@ export interface Student {
   createdAt: string;
 }
 
-export type WaitlistStatus = 'waiting' | 'notified' | 'confirmed' | 'cancelled' | 'expired' | 'enrolled';
+export type WaitlistStatus = 'waiting' | 'notified' | 'confirmed' | 'cancelled' | 'expired' | 'enrolled' | 'declined' | 'rescheduled';
 
 export interface WaitlistEntry {
   id: string;
@@ -44,10 +44,14 @@ export interface WaitlistEntry {
   notifiedAt: string | null;
   confirmedAt: string | null;
   cancelledAt: string | null;
+  declinedAt: string | null;
+  rescheduledAt: string | null;
+  rescheduledToEntryId: string | null;
+  rescheduledFromEntryId: string | null;
   expireAt: string | null;
 }
 
-export type NotificationStatus = 'pending' | 'sent' | 'failed' | 'confirmed' | 'expired';
+export type NotificationStatus = 'pending' | 'sent' | 'failed' | 'confirmed' | 'expired' | 'declined';
 export type NotificationChannel = 'sms' | 'app' | 'email';
 
 export interface Notification {
@@ -61,8 +65,19 @@ export interface Notification {
   message: string;
   sentAt: string | null;
   confirmedAt: string | null;
+  declinedAt: string | null;
   expireAt: string | null;
   result: string | null;
+}
+
+export interface WaitlistRescheduleResult {
+  oldEntry: WaitlistEntry;
+  newEntry: WaitlistEntry;
+  newPositionInfo: {
+    position: number;
+    totalWaiting: number;
+    estimatedChance: number;
+  };
 }
 
 export interface AppConfig {

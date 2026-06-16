@@ -87,6 +87,22 @@ router.get('/slots/:id', (req: Request, res: Response) => {
   res.json({ success: true, data: slot });
 });
 
+router.put('/slots/:id/enrolled', (req: Request, res: Response) => {
+  try {
+    const { enrolledCount } = req.body;
+    if (enrolledCount === undefined) {
+      return res.status(400).json({ success: false, error: '缺少 enrolledCount 参数' });
+    }
+    const slot = courseSlotService.setEnrolledCount(req.params.id, enrolledCount);
+    if (!slot) {
+      return res.status(404).json({ success: false, error: '课程时间段不存在' });
+    }
+    res.json({ success: true, data: slot });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
 router.post('/students', (req: Request, res: Response) => {
   try {
     const { name, phone } = req.body;

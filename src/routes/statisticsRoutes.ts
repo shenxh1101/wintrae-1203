@@ -19,4 +19,13 @@ router.get('/overview', (req: Request, res: Response) => {
   res.json({ success: true, data: stats });
 });
 
+router.get('/operation-dashboard', (req: Request, res: Response) => {
+  const storeId = (req.query.storeId as string) || undefined;
+  const courseId = (req.query.courseId as string) || undefined;
+  const slotId = (req.query.slotId as string) || undefined;
+
+  const dashboard = statisticsService.getOperationDashboard(storeId, courseId, slotId);
+  res.json({ success: true, data: dashboard });
+});
+
 export default router;

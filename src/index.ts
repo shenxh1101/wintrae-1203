@@ -30,7 +30,9 @@ app.get('/', (req, res) => {
       waitlist: {
         join: 'POST /api/waitlist/join',
         cancel: 'POST /api/waitlist/:entryId/cancel',
+        decline: 'POST /api/waitlist/:entryId/decline',
         confirm: 'POST /api/waitlist/:entryId/confirm',
+        reschedule: 'POST /api/waitlist/:entryId/reschedule',
         release: 'POST /api/waitlist/slots/:slotId/release',
         position: 'GET /api/waitlist/entries/:entryId/position',
         studentEntries: 'GET /api/waitlist/students/:studentId/entries',
@@ -46,7 +48,8 @@ app.get('/', (req, res) => {
       statistics: {
         courseHeatRank: 'GET /api/statistics/course-heat-rank',
         storeConversions: 'GET /api/statistics/store-conversions',
-        overview: 'GET /api/statistics/overview'
+        overview: 'GET /api/statistics/overview',
+        operationDashboard: 'GET /api/statistics/operation-dashboard?storeId=&courseId=&slotId='
       }
     }
   });

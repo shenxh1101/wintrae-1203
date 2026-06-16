@@ -1,4 +1,5 @@
 import { repository } from '../repository';
+import { WaitlistEntry } from '../types';
 
 export interface CourseHeatRank {
   courseId: string;
@@ -7,10 +8,13 @@ export interface CourseHeatRank {
   storeName: string;
   category: string;
   totalWaitlistCount: number;
-  activeWaitlistCount: number;
+  waitingCount: number;
+  notifiedCount: number;
   confirmedCount: number;
+  declinedCount: number;
   expiredCount: number;
   cancelledCount: number;
+  rescheduledCount: number;
   conversionRate: number;
 }
 
@@ -18,42 +22,289 @@ export interface StoreConversion {
   storeId: string;
   storeName: string;
   totalWaitlistEntries: number;
+  waitingCount: number;
+  notifiedCount: number;
   confirmedCount: number;
   enrolledCount: number;
+  declinedCount: number;
   cancelledCount: number;
   expiredCount: number;
+  rescheduledCount: number;
   conversionRate: number;
   notificationSentCount: number;
   notificationConfirmedCount: number;
 }
 
+export interface DashboardSlotRow {
+  slotId: string;
+  courseId: string;
+  courseName: string;
+  storeId: string;
+  storeName: string;
+  startTime: string;
+  endTime: string;
+  capacity: number;
+  enrolledCount: number;
+  waitingCount: number;
+  notifiedPendingCount: number;
+  confirmedCount: number;
+  declinedCount: number;
+  cancelledCount: number;
+  expiredCount: number;
+  rescheduledCount: number;
+  totalCount: number;
+  conversionRate: number;
+}
+
+export interface DashboardCourseRow {
+  courseId: string;
+  courseName: string;
+  storeId: string;
+  storeName: string;
+  category: string;
+  slotCount: number;
+  waitingCount: number;
+  notifiedPendingCount: number;
+  confirmedCount: number;
+  declinedCount: number;
+  cancelledCount: number;
+  expiredCount: number;
+  rescheduledCount: number;
+  totalCount: number;
+  conversionRate: number;
+}
+
+export interface DashboardStoreRow {
+  storeId: string;
+  storeName: string;
+  courseCount: number;
+  slotCount: number;
+  waitingCount: number;
+  notifiedPendingCount: number;
+  confirmedCount: number;
+  declinedCount: number;
+  cancelledCount: number;
+  expiredCount: number;
+  rescheduledCount: number;
+  totalCount: number;
+  conversionRate: number;
+}
+
+export interface OperationDashboard {
+  filters: {
+    storeId: string | null;
+    courseId: string | null;
+    slotId: string | null;
+  };
+  summary: {
+    totalCount: number;
+    waitingCount: number;
+    notifiedPendingCount: number;
+    confirmedCount: number;
+    declinedCount: number;
+    cancelledCount: number;
+    expiredCount: number;
+    rescheduledCount: number;
+    conversionRate: number;
+  };
+  bySlot: DashboardSlotRow[];
+  byCourse: DashboardCourseRow[];
+  byStore: DashboardStoreRow[];
+}
+
+interface StatusCounter {
+  waiting: number;
+  notified: number;
+  confirmed: number;
+  declined: number;
+  expired: number;
+  cancelled: number;
+  rescheduled: number;
+  enrolled: number;
+  total: number;
+}
+
+function makeCounter(): StatusCounter {
+  return { waiting: 0, notified: 0, confirmed: 0, declined: 0, expired: 0, cancelled: 0, rescheduled: 0, enrolled: 0, total: 0 };
+}
+
+function tally(counter: StatusCounter, entry: WaitlistEntry): void {
+  counter.total++;
+  switch (entry.status) {
+    case 'waiting': counter.waiting++; break;
+    case 'notified': counter.notified++; break;
+    case 'confirmed': counter.confirmed++; break;
+    case 'declined': counter.declined++; break;
+    case 'expired': counter.expired++; break;
+    case 'cancelled': counter.cancelled++; break;
+    case 'rescheduled': counter.rescheduled++; break;
+    case 'enrolled': counter.enrolled++; break;
+  }
+}
+
+function conversionRateOf(counter: StatusCounter): number {
+  const completed = counter.confirmed + counter.enrolled + counter.declined + counter.expired;
+  return completed > 0 ? Math.round(((counter.confirmed + counter.enrolled) / completed) * 100) : 0;
+}
+
 export class StatisticsService {
+  getOperationDashboard(storeId?: string, courseId?: string, slotId?: string): OperationDashboard {
+    const stores = repository.getStores();
+    const courses = repository.getCourses();
+    const slots = repository.getCourseSlots();
+    const allEntries = repository.getWaitlistEntries();
+
+    let filteredEntries = allEntries;
+    if (slotId) {
+      filteredEntries = filteredEntries.filter(e => e.slotId === slotId);
+    } else if (courseId) {
+      filteredEntries = filteredEntries.filter(e => e.courseId === courseId);
+    } else if (storeId) {
+      const courseIdsOfStore = courses.filter(c => c.storeId === storeId).map(c => c.id);
+      filteredEntries = filteredEntries.filter(e => courseIdsOfStore.includes(e.courseId));
+    }
+
+    let filteredSlots = slots;
+    if (slotId) filteredSlots = filteredSlots.filter(s => s.id === slotId);
+    else if (courseId) filteredSlots = filteredSlots.filter(s => s.courseId === courseId);
+    else if (storeId) {
+      const courseIdsOfStore = courses.filter(c => c.storeId === storeId).map(c => c.id);
+      filteredSlots = filteredSlots.filter(s => courseIdsOfStore.includes(s.courseId));
+    }
+
+    let filteredCourses = courses;
+    if (courseId) filteredCourses = filteredCourses.filter(c => c.id === courseId);
+    else if (storeId) filteredCourses = filteredCourses.filter(c => c.storeId === storeId);
+
+    let filteredStores = stores;
+    if (storeId) filteredStores = filteredStores.filter(s => s.id === storeId);
+
+    const summary = makeCounter();
+    for (const e of filteredEntries) tally(summary, e);
+
+    const bySlot: DashboardSlotRow[] = [];
+    for (const slot of filteredSlots) {
+      const c = makeCounter();
+      const entriesOfSlot = filteredEntries.filter(e => e.slotId === slot.id);
+      for (const e of entriesOfSlot) tally(c, e);
+      const course = courses.find(x => x.id === slot.courseId);
+      const store = stores.find(x => x.id === course?.storeId);
+      bySlot.push({
+        slotId: slot.id,
+        courseId: slot.courseId,
+        courseName: course?.name || '',
+        storeId: store?.id || '',
+        storeName: store?.name || '',
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        capacity: slot.capacity,
+        enrolledCount: slot.enrolledCount,
+        waitingCount: c.waiting,
+        notifiedPendingCount: c.notified,
+        confirmedCount: c.confirmed,
+        declinedCount: c.declined,
+        cancelledCount: c.cancelled,
+        expiredCount: c.expired,
+        rescheduledCount: c.rescheduled,
+        totalCount: c.total,
+        conversionRate: conversionRateOf(c)
+      });
+    }
+    bySlot.sort((a, b) => b.totalCount - a.totalCount);
+
+    const byCourse: DashboardCourseRow[] = [];
+    for (const course of filteredCourses) {
+      const c = makeCounter();
+      const entriesOfCourse = filteredEntries.filter(e => e.courseId === course.id);
+      for (const e of entriesOfCourse) tally(c, e);
+      const store = stores.find(x => x.id === course.storeId);
+      const slotCountOfCourse = filteredSlots.filter(s => s.courseId === course.id).length;
+      byCourse.push({
+        courseId: course.id,
+        courseName: course.name,
+        storeId: course.storeId,
+        storeName: store?.name || '',
+        category: course.category,
+        slotCount: slotCountOfCourse,
+        waitingCount: c.waiting,
+        notifiedPendingCount: c.notified,
+        confirmedCount: c.confirmed,
+        declinedCount: c.declined,
+        cancelledCount: c.cancelled,
+        expiredCount: c.expired,
+        rescheduledCount: c.rescheduled,
+        totalCount: c.total,
+        conversionRate: conversionRateOf(c)
+      });
+    }
+    byCourse.sort((a, b) => b.totalCount - a.totalCount);
+
+    const byStore: DashboardStoreRow[] = [];
+    for (const store of filteredStores) {
+      const c = makeCounter();
+      const courseIdsOfStore = filteredCourses.filter(crs => crs.storeId === store.id).map(crs => crs.id);
+      const entriesOfStore = filteredEntries.filter(e => courseIdsOfStore.includes(e.courseId));
+      for (const e of entriesOfStore) tally(c, e);
+      const coursesOfStore = filteredCourses.filter(crs => crs.storeId === store.id);
+      const slotCountOfStore = filteredSlots.filter(s => courseIdsOfStore.includes(s.courseId)).length;
+      byStore.push({
+        storeId: store.id,
+        storeName: store.name,
+        courseCount: coursesOfStore.length,
+        slotCount: slotCountOfStore,
+        waitingCount: c.waiting,
+        notifiedPendingCount: c.notified,
+        confirmedCount: c.confirmed,
+        declinedCount: c.declined,
+        cancelledCount: c.cancelled,
+        expiredCount: c.expired,
+        rescheduledCount: c.rescheduled,
+        totalCount: c.total,
+        conversionRate: conversionRateOf(c)
+      });
+    }
+    byStore.sort((a, b) => b.totalCount - a.totalCount);
+
+    return {
+      filters: {
+        storeId: storeId || null,
+        courseId: courseId || null,
+        slotId: slotId || null
+      },
+      summary: {
+        totalCount: summary.total,
+        waitingCount: summary.waiting,
+        notifiedPendingCount: summary.notified,
+        confirmedCount: summary.confirmed + summary.enrolled,
+        declinedCount: summary.declined,
+        cancelledCount: summary.cancelled,
+        expiredCount: summary.expired,
+        rescheduledCount: summary.rescheduled,
+        conversionRate: conversionRateOf(summary)
+      },
+      bySlot,
+      byCourse,
+      byStore
+    };
+  }
+
   getCourseHeatRank(limit: number = 10): CourseHeatRank[] {
     const courses = repository.getCourses();
     const stores = repository.getStores();
-    const slots = repository.getCourseSlots();
     const entries = repository.getWaitlistEntries();
 
-    const courseStats = new Map<string, {
-      total: number; active: number; confirmed: number; expired: number; cancelled: number;
-    }>();
+    const courseStats = new Map<string, StatusCounter>();
 
     for (const entry of entries) {
-      const stats = courseStats.get(entry.courseId) || { total: 0, active: 0, confirmed: 0, expired: 0, cancelled: 0 };
-      stats.total++;
-      if (entry.status === 'waiting' || entry.status === 'notified') stats.active++;
-      if (entry.status === 'confirmed' || entry.status === 'enrolled') stats.confirmed++;
-      if (entry.status === 'expired') stats.expired++;
-      if (entry.status === 'cancelled') stats.cancelled++;
+      const stats = courseStats.get(entry.courseId) || makeCounter();
+      tally(stats, entry);
       courseStats.set(entry.courseId, stats);
     }
 
     const ranks: CourseHeatRank[] = [];
     for (const course of courses) {
-      const stats = courseStats.get(course.id) || { total: 0, active: 0, confirmed: 0, expired: 0, cancelled: 0 };
+      const stats = courseStats.get(course.id) || makeCounter();
       const store = stores.find(s => s.id === course.storeId);
-      const notifiedOrDone = stats.confirmed + stats.expired;
-      const conversionRate = notifiedOrDone > 0 ? Math.round((stats.confirmed / notifiedOrDone) * 100) : 0;
 
       ranks.push({
         courseId: course.id,
@@ -62,11 +313,14 @@ export class StatisticsService {
         storeName: store?.name || '',
         category: course.category,
         totalWaitlistCount: stats.total,
-        activeWaitlistCount: stats.active,
-        confirmedCount: stats.confirmed,
+        waitingCount: stats.waiting,
+        notifiedCount: stats.notified,
+        confirmedCount: stats.confirmed + stats.enrolled,
+        declinedCount: stats.declined,
         expiredCount: stats.expired,
         cancelledCount: stats.cancelled,
-        conversionRate
+        rescheduledCount: stats.rescheduled,
+        conversionRate: conversionRateOf(stats)
       });
     }
 
@@ -80,7 +334,6 @@ export class StatisticsService {
     const entries = repository.getWaitlistEntries();
     const notifications = repository.getNotifications();
 
-    const storeIds = stores.map(s => s.id);
     const courseToStore = new Map<string, string>();
     for (const c of courses) {
       courseToStore.set(c.id, c.storeId);
@@ -89,32 +342,27 @@ export class StatisticsService {
     const results: StoreConversion[] = [];
 
     for (const store of stores) {
+      const c = makeCounter();
       const storeEntries = entries.filter(e => courseToStore.get(e.courseId) === store.id);
+      for (const e of storeEntries) tally(c, e);
+
       const storeNotifications = notifications.filter(n => courseToStore.get(n.courseId) === store.id);
-
-      const confirmedCount = storeEntries.filter(e => e.status === 'confirmed' || e.status === 'enrolled').length;
-      const enrolledCount = storeEntries.filter(e => e.status === 'enrolled').length;
-      const cancelledCount = storeEntries.filter(e => e.status === 'cancelled').length;
-      const expiredCount = storeEntries.filter(e => e.status === 'expired').length;
-      const notificationSentCount = storeNotifications.filter(n => n.status === 'sent' || n.status === 'confirmed' || n.status === 'expired').length;
+      const notificationSentCount = storeNotifications.filter(n => n.status !== 'pending' && n.status !== 'failed').length;
       const notificationConfirmedCount = storeNotifications.filter(n => n.status === 'confirmed').length;
-
-      const notifiedEntries = storeEntries.filter(e =>
-        e.status === 'confirmed' || e.status === 'enrolled' || e.status === 'expired'
-      );
-      const conversionRate = notifiedEntries.length > 0
-        ? Math.round((confirmedCount / notifiedEntries.length) * 100)
-        : 0;
 
       results.push({
         storeId: store.id,
         storeName: store.name,
-        totalWaitlistEntries: storeEntries.length,
-        confirmedCount,
-        enrolledCount,
-        cancelledCount,
-        expiredCount,
-        conversionRate,
+        totalWaitlistEntries: c.total,
+        waitingCount: c.waiting,
+        notifiedCount: c.notified,
+        confirmedCount: c.confirmed,
+        enrolledCount: c.enrolled,
+        declinedCount: c.declined,
+        cancelledCount: c.cancelled,
+        expiredCount: c.expired,
+        rescheduledCount: c.rescheduled,
+        conversionRate: conversionRateOf(c),
         notificationSentCount,
         notificationConfirmedCount
       });
@@ -129,30 +377,30 @@ export class StatisticsService {
     const courses = repository.getCourses();
     const slots = repository.getCourseSlots();
 
-    const totalEntries = entries.length;
-    const activeEntries = entries.filter(e => e.status === 'waiting' || e.status === 'notified').length;
-    const confirmedEntries = entries.filter(e => e.status === 'confirmed' || e.status === 'enrolled').length;
-    const cancelledEntries = entries.filter(e => e.status === 'cancelled').length;
-    const expiredEntries = entries.filter(e => e.status === 'expired').length;
+    const c = makeCounter();
+    for (const e of entries) tally(c, e);
 
     const totalNotifications = notifications.length;
     const confirmedNotifications = notifications.filter(n => n.status === 'confirmed').length;
     const expiredNotifications = notifications.filter(n => n.status === 'expired').length;
+    const declinedNotifications = notifications.filter(n => n.status === 'declined').length;
 
     return {
-      totalEntries,
-      activeEntries,
-      confirmedEntries,
-      cancelledEntries,
-      expiredEntries,
+      totalEntries: c.total,
+      waitingEntries: c.waiting,
+      notifiedPendingEntries: c.notified,
+      confirmedEntries: c.confirmed + c.enrolled,
+      declinedEntries: c.declined,
+      cancelledEntries: c.cancelled,
+      expiredEntries: c.expired,
+      rescheduledEntries: c.rescheduled,
       totalCourses: courses.length,
       totalSlots: slots.length,
       totalNotifications,
       confirmedNotifications,
+      declinedNotifications,
       expiredNotifications,
-      overallConversionRate: (confirmedEntries + expiredEntries) > 0
-        ? Math.round((confirmedEntries / (confirmedEntries + expiredEntries)) * 100)
-        : 0
+      overallConversionRate: conversionRateOf(c)
     };
   }
 }

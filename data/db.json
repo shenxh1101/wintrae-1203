@@ -1,108 +1,162 @@
 {
   "stores": [
     {
-      "id": "419213fa-f764-491c-849d-f7c3b561ccee",
-      "name": "????",
-      "address": "??????xxx?123?",
-      "createdAt": "2026-06-15T22:59:33.166Z"
+      "id": "6afec2b6-c309-4ed9-a4f6-3a5969d3018f",
+      "name": "?????",
+      "address": "?????????",
+      "createdAt": "2026-06-16T00:38:49.864Z"
     }
   ],
   "courses": [
     {
-      "id": "9f91840f-1363-48dd-a179-0588e4957c44",
-      "name": "Python??????",
-      "storeId": "419213fa-f764-491c-849d-f7c3b561ccee",
-      "description": "??6-12???",
+      "id": "e84b7ebb-ed9e-4cf7-915b-f7253b1ed6cc",
+      "name": "??????",
+      "storeId": "6afec2b6-c309-4ed9-a4f6-3a5969d3018f",
+      "description": "4-6?",
       "category": "??",
-      "createdAt": "2026-06-15T22:59:33.192Z"
+      "createdAt": "2026-06-16T00:38:49.872Z"
     }
   ],
   "courseSlots": [
     {
-      "id": "6282f770-5e0f-4ed4-a641-b589a9385426",
-      "courseId": "9f91840f-1363-48dd-a179-0588e4957c44",
-      "startTime": "2026-06-20T10:00:00",
-      "endTime": "2026-06-20T12:00:00",
-      "capacity": 2,
-      "enrolledCount": 2,
-      "createdAt": "2026-06-15T22:59:33.197Z"
+      "id": "84841d3c-2e31-44bb-b3ca-b4584d16d401",
+      "courseId": "e84b7ebb-ed9e-4cf7-915b-f7253b1ed6cc",
+      "startTime": "2026-07-01T09:00:00",
+      "endTime": "2026-07-01T10:30:00",
+      "capacity": 1,
+      "enrolledCount": 1,
+      "createdAt": "2026-06-16T00:38:49.883Z"
+    },
+    {
+      "id": "4a583571-cad1-4d54-8c10-ddc1ac9f3d2f",
+      "courseId": "e84b7ebb-ed9e-4cf7-915b-f7253b1ed6cc",
+      "startTime": "2026-07-02T15:00:00",
+      "endTime": "2026-07-02T16:30:00",
+      "capacity": 1,
+      "enrolledCount": 1,
+      "createdAt": "2026-06-16T00:38:49.894Z"
     }
   ],
   "students": [
     {
-      "id": "e0151c0b-46c1-496d-a109-39c54675a663",
-      "name": "???",
-      "phone": "13800000001",
-      "createdAt": "2026-06-15T22:59:33.224Z"
+      "id": "7c4fb452-6f5a-43d1-88e1-8ad9e3881fcb",
+      "name": "Alice",
+      "phone": "13810000001",
+      "createdAt": "2026-06-16T00:38:49.936Z"
     },
     {
-      "id": "4401f9e1-b909-4df9-a1b7-bf1af7468350",
-      "name": "???",
-      "phone": "13800000002",
-      "createdAt": "2026-06-15T22:59:33.248Z"
+      "id": "74d38fef-cfab-453c-8320-df79538fe359",
+      "name": "Bob",
+      "phone": "13810000002",
+      "createdAt": "2026-06-16T00:38:49.946Z"
     },
     {
-      "id": "4a1b3dcc-d680-4c94-b27e-8484e8cf9c8e",
-      "name": "???",
-      "phone": "13800000003",
-      "createdAt": "2026-06-15T22:59:33.261Z"
+      "id": "1ab06e8c-263a-4cdb-9de6-4ead0971c1c5",
+      "name": "Carol",
+      "phone": "13810000003",
+      "createdAt": "2026-06-16T00:38:49.956Z"
     }
   ],
   "waitlistEntries": [
     {
-      "id": "fffa1793-3160-440f-922c-c6d0980e8332",
-      "studentId": "e0151c0b-46c1-496d-a109-39c54675a663",
-      "courseId": "9f91840f-1363-48dd-a179-0588e4957c44",
-      "slotId": "6282f770-5e0f-4ed4-a641-b589a9385426",
-      "status": "confirmed",
+      "id": "bc9857a2-6984-4d48-b553-7f456b91a419",
+      "studentId": "7c4fb452-6f5a-43d1-88e1-8ad9e3881fcb",
+      "courseId": "e84b7ebb-ed9e-4cf7-915b-f7253b1ed6cc",
+      "slotId": "84841d3c-2e31-44bb-b3ca-b4584d16d401",
+      "status": "declined",
       "queuePosition": 1,
-      "joinedAt": "2026-06-15T22:59:33.229Z",
-      "notifiedAt": "2026-06-15T23:03:08.203Z",
-      "confirmedAt": "2026-06-15T23:08:30.004Z",
+      "joinedAt": "2026-06-16T00:38:49.937Z",
+      "notifiedAt": "2026-06-16T00:38:49.984Z",
+      "confirmedAt": null,
       "cancelledAt": null,
-      "expireAt": "2026-06-15T23:33:08.203Z"
+      "declinedAt": "2026-06-16T00:40:11.804Z",
+      "rescheduledAt": null,
+      "rescheduledToEntryId": null,
+      "rescheduledFromEntryId": null,
+      "expireAt": "2026-06-16T01:08:49.984Z"
     },
     {
-      "id": "28f0aa38-9243-4bcb-b303-be1c0c0862bd",
-      "studentId": "4401f9e1-b909-4df9-a1b7-bf1af7468350",
-      "courseId": "9f91840f-1363-48dd-a179-0588e4957c44",
-      "slotId": "6282f770-5e0f-4ed4-a641-b589a9385426",
-      "status": "cancelled",
-      "queuePosition": 2,
-      "joinedAt": "2026-06-15T22:59:33.255Z",
+      "id": "9a4b0c5d-3977-46ac-95c0-abd61d08f8ec",
+      "studentId": "74d38fef-cfab-453c-8320-df79538fe359",
+      "courseId": "e84b7ebb-ed9e-4cf7-915b-f7253b1ed6cc",
+      "slotId": "84841d3c-2e31-44bb-b3ca-b4584d16d401",
+      "status": "confirmed",
+      "queuePosition": 1,
+      "joinedAt": "2026-06-16T00:38:49.950Z",
+      "notifiedAt": "2026-06-16T00:40:11.823Z",
+      "confirmedAt": "2026-06-16T00:40:11.863Z",
+      "cancelledAt": null,
+      "declinedAt": null,
+      "rescheduledAt": null,
+      "rescheduledToEntryId": null,
+      "rescheduledFromEntryId": null,
+      "expireAt": "2026-06-16T01:10:11.823Z"
+    },
+    {
+      "id": "7bae8328-22fa-442e-bc14-11b46844c4a1",
+      "studentId": "1ab06e8c-263a-4cdb-9de6-4ead0971c1c5",
+      "courseId": "e84b7ebb-ed9e-4cf7-915b-f7253b1ed6cc",
+      "slotId": "84841d3c-2e31-44bb-b3ca-b4584d16d401",
+      "status": "rescheduled",
+      "queuePosition": 1,
+      "joinedAt": "2026-06-16T00:38:49.958Z",
       "notifiedAt": null,
       "confirmedAt": null,
-      "cancelledAt": "2026-06-15T23:08:30.022Z",
+      "cancelledAt": null,
+      "declinedAt": null,
+      "rescheduledAt": "2026-06-16T00:40:11.887Z",
+      "rescheduledToEntryId": "1cd9eb24-8ef8-4ce9-9cef-9df893808389",
+      "rescheduledFromEntryId": null,
       "expireAt": null
     },
     {
-      "id": "d5a9c91a-8967-46d5-81a3-5aba13d96eab",
-      "studentId": "4a1b3dcc-d680-4c94-b27e-8484e8cf9c8e",
-      "courseId": "9f91840f-1363-48dd-a179-0588e4957c44",
-      "slotId": "6282f770-5e0f-4ed4-a641-b589a9385426",
+      "id": "1cd9eb24-8ef8-4ce9-9cef-9df893808389",
+      "studentId": "1ab06e8c-263a-4cdb-9de6-4ead0971c1c5",
+      "courseId": "e84b7ebb-ed9e-4cf7-915b-f7253b1ed6cc",
+      "slotId": "4a583571-cad1-4d54-8c10-ddc1ac9f3d2f",
       "status": "waiting",
       "queuePosition": 1,
-      "joinedAt": "2026-06-15T22:59:33.273Z",
+      "joinedAt": "2026-06-16T00:40:11.892Z",
       "notifiedAt": null,
       "confirmedAt": null,
       "cancelledAt": null,
+      "declinedAt": null,
+      "rescheduledAt": null,
+      "rescheduledToEntryId": null,
+      "rescheduledFromEntryId": "7bae8328-22fa-442e-bc14-11b46844c4a1",
       "expireAt": null
     }
   ],
   "notifications": [
     {
-      "id": "6d0220ab-0976-4cd0-a25a-9f06a1239bbe",
-      "waitlistEntryId": "fffa1793-3160-440f-922c-c6d0980e8332",
-      "studentId": "e0151c0b-46c1-496d-a109-39c54675a663",
-      "courseId": "9f91840f-1363-48dd-a179-0588e4957c44",
-      "slotId": "6282f770-5e0f-4ed4-a641-b589a9385426",
+      "id": "7b7e33af-41c5-4527-9649-0355090cf670",
+      "waitlistEntryId": "bc9857a2-6984-4d48-b553-7f456b91a419",
+      "studentId": "7c4fb452-6f5a-43d1-88e1-8ad9e3881fcb",
+      "courseId": "e84b7ebb-ed9e-4cf7-915b-f7253b1ed6cc",
+      "slotId": "84841d3c-2e31-44bb-b3ca-b4584d16d401",
+      "channel": "sms",
+      "status": "declined",
+      "message": "【候补补位通知】尊敬的Alice，您候补的课程「??????」(2026/7/1 09:00:00 - 2026/7/1 10:30:00)有名额释放！请于2026/6/16 09:08:49前确认，逾期将顺延至下一位学员。",
+      "sentAt": "2026-06-16T00:38:49.984Z",
+      "confirmedAt": null,
+      "declinedAt": "2026-06-16T00:40:11.805Z",
+      "expireAt": "2026-06-16T01:08:49.984Z",
+      "result": "学员主动放弃补位，已顺延至下一位候补"
+    },
+    {
+      "id": "b94fb3a4-fcb8-4d8f-9ce7-ac2151b6992a",
+      "waitlistEntryId": "9a4b0c5d-3977-46ac-95c0-abd61d08f8ec",
+      "studentId": "74d38fef-cfab-453c-8320-df79538fe359",
+      "courseId": "e84b7ebb-ed9e-4cf7-915b-f7253b1ed6cc",
+      "slotId": "84841d3c-2e31-44bb-b3ca-b4584d16d401",
       "channel": "sms",
       "status": "confirmed",
-      "message": "【候补补位通知】尊敬的???，您候补的课程「Python??????」(2026/6/20 10:00:00 - 2026/6/20 12:00:00)有名额释放！请于2026/6/16 07:33:08前确认，逾期将顺延至下一位学员。",
-      "sentAt": "2026-06-15T23:03:08.203Z",
-      "confirmedAt": "2026-06-15T23:08:30.005Z",
-      "expireAt": "2026-06-15T23:33:08.203Z",
-      "result": "学员已确认"
+      "message": "【候补补位通知】尊敬的Bob，您候补的课程「??????」(2026/7/1 09:00:00 - 2026/7/1 10:30:00)有名额释放！请于2026/6/16 09:10:11前确认，逾期将顺延至下一位学员。",
+      "sentAt": "2026-06-16T00:40:11.823Z",
+      "confirmedAt": "2026-06-16T00:40:11.867Z",
+      "declinedAt": null,
+      "expireAt": "2026-06-16T01:10:11.823Z",
+      "result": "学员已确认补位成功"
     }
   ],
   "config": {
