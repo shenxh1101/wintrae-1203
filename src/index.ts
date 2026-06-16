@@ -49,6 +49,7 @@ app.get('/', (req, res) => {
         byWaitlist: 'GET /api/notifications/waitlist/:entryId',
         pending: 'GET /api/notifications/pending?dedup=true',
         ledger: 'GET /api/notifications/ledger?storeId=&courseId=&dateFrom=&dateTo=',
+        releaseChainLedger: 'GET /api/notifications/release-chain-ledger?storeId=&courseId=&dateFrom=&dateTo=',
         resendReminder: 'POST /api/notifications/waitlist/:entryId/resend-reminder',
         forceDecline: 'POST /api/notifications/waitlist/:entryId/force-decline'
       },
@@ -57,7 +58,8 @@ app.get('/', (req, res) => {
         storeConversions: 'GET /api/statistics/store-conversions',
         overview: 'GET /api/statistics/overview',
         operationDashboard: 'GET /api/statistics/operation-dashboard?storeId=&courseId=&slotId=&dateFrom=&dateTo=',
-        dailyTrend: 'GET /api/statistics/daily-trend?dateFrom=&dateTo='
+        dailyTrend: 'GET /api/statistics/daily-trend?dateFrom=&dateTo=',
+        funnel: 'GET /api/statistics/funnel?storeId=&courseId=&dateFrom=&dateTo=&hotspotDays=7'
       }
     }
   });

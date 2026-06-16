@@ -14,7 +14,7 @@ export interface WaitlistPositionInfo {
 }
 
 interface INotificationService {
-  sendNotification(entry: WaitlistEntry): Notification;
+  sendNotification(entry: WaitlistEntry, releaseGroupId?: string, chainOrder?: number): Notification;
   markConfirmedByWaitlistEntry(waitlistEntryId: string): void;
   markExpiredByWaitlistEntry(waitlistEntryId: string): void;
   markDeclinedByWaitlistEntry(waitlistEntryId: string): void;
@@ -58,8 +58,8 @@ export class WaitlistService {
       throw new Error(`您已在该课程时间段的候补队列中（候补ID：${existingActive.id}，当前排位：${existingActive.queuePosition}）`);
     }
 
-    const waitingEntries = repository.getWaitingWaitlistBySlotId(slot.id);
-    const nextPosition = waitingEntries.length + 1;
+    const currentQueue = repository.getQueueSortedBySlotId(slot.id);
+    const nextPosition = currentQueue.length + 1;
 
     const entry: WaitlistEntry = {
       id: uuidv4(),
@@ -80,6 +80,7 @@ export class WaitlistService {
     };
 
     repository.addWaitlistEntry(entry);
+    this.rebalanceQueue(slot.id);
     return entry;
   }
 
@@ -117,7 +118,7 @@ export class WaitlistService {
 
     this.notificationService.markDeclinedByWaitlistEntry(entryId);
     this.rebalanceQueue(entry.slotId);
-    this.notifyNextInQueue(entry.slotId, 1);
+    this.notifyNextAfterClosed(entryId, entry.slotId);
 
     return entry;
   }
@@ -138,7 +139,7 @@ export class WaitlistService {
       repository.updateWaitlistEntry(entry);
       this.notificationService.markExpiredByWaitlistEntry(entry.id);
       this.rebalanceQueue(entry.slotId);
-      this.notifyNextInQueue(entry.slotId, 1);
+      this.notifyNextAfterClosed(entryId, entry.slotId);
       throw new Error('确认已超时，候补资格已顺延至下一位学员');
     }
 
@@ -202,11 +203,11 @@ export class WaitlistService {
     this.rebalanceQueue(oldEntry.slotId);
 
     if (wasNotified) {
-      this.notifyNextInQueue(oldEntry.slotId, 1);
+      this.notifyNextAfterClosed(oldEntry.id, oldEntry.slotId);
     }
 
-    const waitingEntries = repository.getWaitingWaitlistBySlotId(newSlot.id);
-    const nextPosition = waitingEntries.length + 1;
+    const newSlotFullQueue = repository.getQueueSortedBySlotId(newSlot.id);
+    const nextPosition = newSlotFullQueue.length + 1;
 
     const newEntry: WaitlistEntry = {
       id: uuidv4(),
@@ -226,6 +227,7 @@ export class WaitlistService {
       expireAt: null
     };
     repository.addWaitlistEntry(newEntry);
+    this.rebalanceQueue(newSlot.id);
 
     oldEntry.rescheduledToEntryId = newEntry.id;
     repository.updateWaitlistEntry(oldEntry);
@@ -258,19 +260,23 @@ export class WaitlistService {
     }
 
     this.slotService.decrementEnrolled(slotId, count);
-    return this.notifyNextInQueue(slotId, count);
+    const releaseGroupId = uuidv4();
+    return this.notifyNextInQueue(slotId, count, releaseGroupId, 0);
   }
 
-  notifyNextInQueue(slotId: string, count: number = 1): Notification[] {
+  notifyNextInQueue(slotId: string, count: number = 1, releaseGroupId?: string, chainOrderStart: number = 0): Notification[] {
     const notifications: Notification[] = [];
     let remaining = count;
+    let chainOrder = chainOrderStart;
+    const groupId = releaseGroupId || uuidv4();
 
     while (remaining > 0) {
       const waitingEntries = repository.getWaitingWaitlistBySlotId(slotId);
       if (waitingEntries.length === 0) break;
 
       const nextEntry = waitingEntries[0];
-      const notification = this.notificationService.sendNotification(nextEntry);
+      chainOrder++;
+      const notification = this.notificationService.sendNotification(nextEntry, groupId, chainOrder);
       notifications.push(notification);
       remaining--;
     }
@@ -290,7 +296,7 @@ export class WaitlistService {
 
         this.notificationService.markExpiredByWaitlistEntry(entry.id);
         this.rebalanceQueue(entry.slotId);
-        this.notifyNextInQueue(entry.slotId, 1);
+        this.notifyNextAfterClosed(entry.id, entry.slotId);
       }
     }
   }
@@ -299,24 +305,27 @@ export class WaitlistService {
     const entry = repository.getWaitlistEntryById(entryId);
     if (!entry) return undefined;
 
-    const waitingEntries = repository.getWaitingWaitlistBySlotId(entry.slotId);
+    this.rebalanceQueue(entry.slotId);
+    const freshEntry = repository.getWaitlistEntryById(entryId);
+    if (!freshEntry) return undefined;
+
+    const fullQueue = repository.getQueueSortedBySlotId(freshEntry.slotId);
     const notifications = repository.getNotificationsByWaitlistEntryId(entryId);
 
-    let position: number;
-    if (entry.status === 'waiting') {
-      position = entry.queuePosition;
-    } else {
-      position = -1;
-    }
+    const position = freshEntry.status === 'notified' || freshEntry.status === 'waiting'
+      ? freshEntry.queuePosition
+      : -1;
 
-    const slot = repository.getCourseSlotById(entry.slotId);
-    const turnoverRate = this.calculateTurnoverRate(entry.slotId);
-    const estimatedChance = this.calculateEstimatedChance(position, waitingEntries.length, slot?.capacity || 0, turnoverRate);
+    const waitingCount = fullQueue.filter(e => e.status === 'waiting').length;
+
+    const slot = repository.getCourseSlotById(freshEntry.slotId);
+    const turnoverRate = this.calculateTurnoverRate(freshEntry.slotId);
+    const estimatedChance = this.calculateEstimatedChance(position, waitingCount, slot?.capacity || 0, turnoverRate);
 
     return {
-      entry,
+      entry: freshEntry,
       position,
-      totalWaiting: waitingEntries.length,
+      totalWaiting: waitingCount,
       estimatedChance,
       notifications
     };
@@ -358,16 +367,19 @@ export class WaitlistService {
     const sourceSlot = repository.getCourseSlotById(sourceSlotId);
     const sourceCourse = sourceSlot ? repository.getCourseById(sourceSlot.courseId) : undefined;
 
-    const sourceWaiting = repository.getWaitingWaitlistBySlotId(sourceSlotId);
-    const sourceNotified = repository.getActiveWaitlistBySlotId(sourceSlotId)
-      .filter(e => e.status === 'notified');
+    this.rebalanceQueue(sourceSlotId);
+    this.rebalanceQueue(newSlotId);
 
-    const targetWaiting = repository.getWaitingWaitlistBySlotId(newSlotId);
-    const targetNotified = repository.getActiveWaitlistBySlotId(newSlotId)
-      .filter(e => e.status === 'notified');
+    const sourceFull = repository.getQueueSortedBySlotId(sourceSlotId);
+    const sourceWaiting = sourceFull.filter(e => e.status === 'waiting');
+    const sourceNotified = sourceFull.filter(e => e.status === 'notified');
+
+    const targetFull = repository.getQueueSortedBySlotId(newSlotId);
+    const targetWaiting = targetFull.filter(e => e.status === 'waiting');
+    const targetNotified = targetFull.filter(e => e.status === 'notified');
 
     const items: BatchReschedulePreview['items'] = [];
-    let targetPos = targetWaiting.length + 1;
+    let targetPos = targetFull.length + 1;
     let willNotifyCount = 0;
 
     for (const entry of entries) {
@@ -488,8 +500,8 @@ export class WaitlistService {
   }
 
   private rebalanceQueue(slotId: string): void {
-    const waitingEntries = repository.getWaitingWaitlistBySlotId(slotId);
-    waitingEntries.forEach((entry, idx) => {
+    const sortedQueue = repository.getQueueSortedBySlotId(slotId);
+    sortedQueue.forEach((entry, idx) => {
       entry.queuePosition = idx + 1;
       repository.updateWaitlistEntry(entry);
     });
@@ -501,6 +513,28 @@ export class WaitlistService {
     if (completed.length === 0) return 0.3;
     const confirmed = completed.filter(e => e.status === 'confirmed' || e.status === 'enrolled');
     return confirmed.length / completed.length;
+  }
+
+  private findReleaseGroupContext(waitlistEntryId: string): { releaseGroupId?: string; maxChainOrder: number } {
+    const allNotifications = repository.getNotificationsByWaitlistEntryId(waitlistEntryId);
+    const groupMap = new Map<string, number>();
+    for (const n of allNotifications) {
+      if (!n.releaseGroupId) continue;
+      const current = groupMap.get(n.releaseGroupId) || 0;
+      if ((n.chainOrder || 0) > current) groupMap.set(n.releaseGroupId, n.chainOrder || 0);
+    }
+    if (groupMap.size === 0) return { releaseGroupId: undefined, maxChainOrder: 0 };
+    let bestGroup = '';
+    let bestOrder = -1;
+    for (const [g, o] of groupMap) {
+      if (o > bestOrder) { bestOrder = o; bestGroup = g; }
+    }
+    return { releaseGroupId: bestGroup, maxChainOrder: bestOrder };
+  }
+
+  private notifyNextAfterClosed(closedEntryId: string, slotId: string): void {
+    const ctx = this.findReleaseGroupContext(closedEntryId);
+    this.notifyNextInQueue(slotId, 1, ctx.releaseGroupId, ctx.maxChainOrder);
   }
 
   private calculateEstimatedChance(position: number, totalWaiting: number, capacity: number, turnoverRate: number): number {

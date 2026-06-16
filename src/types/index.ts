@@ -68,6 +68,8 @@ export interface Notification {
   declinedAt: string | null;
   expireAt: string | null;
   result: string | null;
+  releaseGroupId: string | null;
+  chainOrder: number | null;
 }
 
 export interface WaitlistRescheduleResult {
@@ -161,6 +163,71 @@ export interface DailyTrendRow {
   rescheduled: number;
   totalEvents: number;
   conversionRate: number;
+}
+
+export interface ReleaseChainStep {
+  order: number;
+  waitlistEntryId: string;
+  studentId: string;
+  studentName: string;
+  studentPhone: string;
+  firstNotificationSentAt: string | null;
+  finalResult: 'confirmed' | 'declined' | 'expired' | 'manual_ended' | 'pending' | null;
+  finalResultAt: string | null;
+  resultMessage: string | null;
+  reminders: {
+    notificationId: string;
+    sentAt: string | null;
+  }[];
+}
+
+export interface ReleaseChainLedger {
+  releaseGroupId: string;
+  storeId: string;
+  storeName: string;
+  courseId: string;
+  courseName: string;
+  slotId: string;
+  slotStartTime: string;
+  slotEndTime: string;
+  releasedAt: string;
+  releasedCount: number;
+  steps: ReleaseChainStep[];
+  totalForwardCount: number;
+  finalStatus: 'filled' | 'partially_filled' | 'in_progress';
+  finalWinnerStudentId: string | null;
+  finalWinnerStudentName: string | null;
+}
+
+export interface DailyFunnelRow {
+  date: string;
+  joined: number;
+  reached: number;
+  confirmed: number;
+  declined: number;
+  expired: number;
+  rescheduled: number;
+  reachedRate: number;
+  conversionOfReached: number;
+  pendingAtDayEnd: number;
+}
+
+export interface PendingHotspot {
+  slotId: string;
+  courseId: string;
+  courseName: string;
+  storeId: string;
+  storeName: string;
+  slotStartTime: string;
+  slotEndTime: string;
+  pendingCount: number;
+  avgWaitMinutes: number;
+  longestWaitMinutes: number;
+}
+
+export interface FunnelAnalysis {
+  dailyFunnel: DailyFunnelRow[];
+  pendingHotspots: PendingHotspot[];
 }
 
 export interface AppConfig {

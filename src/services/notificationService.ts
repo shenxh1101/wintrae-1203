@@ -2,7 +2,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { repository } from '../repository';
 import {
   WaitlistEntry, Notification, NotificationChannel, NotificationStatus,
-  Student, Course, CourseSlot, NotificationLedgerRow, NotificationTimelineItem
+  Student, Course, CourseSlot, NotificationLedgerRow, NotificationTimelineItem,
+  ReleaseChainLedger, ReleaseChainStep
 } from '../types';
 
 export interface NotificationDetail extends Notification {
@@ -12,7 +13,7 @@ export interface NotificationDetail extends Notification {
 }
 
 export class NotificationService {
-  sendNotification(entry: WaitlistEntry): Notification {
+  sendNotification(entry: WaitlistEntry, releaseGroupId?: string, chainOrder?: number): Notification {
     const config = repository.getConfig();
     const now = new Date();
     const expireAt = new Date(now.getTime() + config.notificationTimeoutMinutes * 60 * 1000);
@@ -37,7 +38,9 @@ export class NotificationService {
       confirmedAt: null,
       declinedAt: null,
       expireAt: expireAt.toISOString(),
-      result: null
+      result: null,
+      releaseGroupId: releaseGroupId || null,
+      chainOrder: chainOrder || null
     };
 
     repository.addNotification(notification);
@@ -65,10 +68,14 @@ export class NotificationService {
     }
 
     const existingNotifications = repository.getNotificationsByWaitlistEntryId(entryId);
-    const reminderCount = existingNotifications.filter(n => n.result === '系统重发提醒' || n.status === 'sent').length;
-    if (reminderCount >= 2) {
+    const reminderCount = existingNotifications.filter(n => n.result === '系统重发提醒').length;
+    if (reminderCount >= 1) {
       throw new Error('该邀请已重发过一次提醒，不可再次重发');
     }
+
+    const firstInvite = existingNotifications.find(n => n.releaseGroupId);
+    const releaseGroupId = firstInvite?.releaseGroupId || null;
+    const chainOrder = firstInvite?.chainOrder || null;
 
     const student = repository.getStudentById(entry.studentId);
     const course = repository.getCourseById(entry.courseId);
@@ -93,7 +100,9 @@ export class NotificationService {
       confirmedAt: null,
       declinedAt: null,
       expireAt: entry.expireAt,
-      result: '系统重发提醒'
+      result: '系统重发提醒',
+      releaseGroupId,
+      chainOrder
     };
 
     repository.addNotification(reminder);
@@ -123,6 +132,11 @@ export class NotificationService {
       }
     }
 
+    const existingForEntry = repository.getNotificationsByWaitlistEntryId(entry.id);
+    const firstInvite = existingForEntry.find(n => n.releaseGroupId);
+    const releaseGroupId = firstInvite?.releaseGroupId || null;
+    const chainOrder = firstInvite?.chainOrder || null;
+
     const forceDeclineNotif: Notification = {
       id: uuidv4(),
       waitlistEntryId: entry.id,
@@ -136,7 +150,9 @@ export class NotificationService {
       confirmedAt: null,
       declinedAt: now.toISOString(),
       expireAt: entry.expireAt,
-      result: '前台手动结束邀请，学员口头确认放弃'
+      result: '前台手动结束邀请，学员口头确认放弃',
+      releaseGroupId,
+      chainOrder
     };
     repository.addNotification(forceDeclineNotif);
 
@@ -202,7 +218,9 @@ export class NotificationService {
       if (n.status === 'sent' || n.status === 'pending') {
         n.status = 'confirmed';
         n.confirmedAt = now;
-        n.result = '学员已确认补位成功';
+        if (n.result !== '系统重发提醒') {
+          n.result = '学员已确认补位成功';
+        }
         repository.updateNotification(n);
       }
     }
@@ -213,7 +231,9 @@ export class NotificationService {
     for (const n of notifications) {
       if (n.status === 'sent' || n.status === 'pending') {
         n.status = 'expired';
-        n.result = '学员超时未确认，已顺延至下一位候补';
+        if (n.result !== '系统重发提醒') {
+          n.result = '学员超时未确认，已顺延至下一位候补';
+        }
         repository.updateNotification(n);
       }
     }
@@ -226,7 +246,9 @@ export class NotificationService {
       if (n.status === 'sent' || n.status === 'pending') {
         n.status = 'declined';
         n.declinedAt = now;
-        n.result = '学员主动放弃补位，已顺延至下一位候补';
+        if (n.result !== '系统重发提醒') {
+          n.result = '学员主动放弃补位，已顺延至下一位候补';
+        }
         repository.updateNotification(n);
       }
     }
@@ -237,7 +259,9 @@ export class NotificationService {
     for (const n of notifications) {
       if (n.status === 'sent' || n.status === 'pending') {
         n.status = 'expired';
-        n.result = '学员主动取消候补队列';
+        if (n.result !== '系统重发提醒') {
+          n.result = '学员主动取消候补队列';
+        }
         repository.updateNotification(n);
       }
     }
@@ -366,6 +390,166 @@ export class NotificationService {
     return result.sort((a, b) =>
       (b.firstNotifiedAt || '').localeCompare(a.firstNotifiedAt || '')
     );
+  }
+
+  getReleaseChainLedger(
+    storeId?: string,
+    courseId?: string,
+    dateFrom?: string,
+    dateTo?: string
+  ): ReleaseChainLedger[] {
+    const stores = repository.getStores();
+    const courses = repository.getCourses();
+    const slots = repository.getCourseSlots();
+    const students = repository.getStudents();
+    const notifications = repository.getNotifications();
+
+    const courseToStore = new Map(courses.map(c => [c.id, c.storeId]));
+
+    const fromDate = dateFrom ? new Date(dateFrom) : null;
+    const toDate = dateTo ? new Date(dateTo) : null;
+    if (toDate) toDate.setDate(toDate.getDate() + 1);
+
+    const byGroup = new Map<string, Notification[]>();
+    for (const n of notifications) {
+      if (!n.releaseGroupId) continue;
+      if (!byGroup.has(n.releaseGroupId)) byGroup.set(n.releaseGroupId, []);
+      byGroup.get(n.releaseGroupId)!.push(n);
+    }
+
+    const results: ReleaseChainLedger[] = [];
+
+    for (const [releaseGroupId, groupNotifs] of byGroup) {
+      const inviteNotifs = groupNotifs
+        .filter(n => n.result !== '系统重发提醒')
+        .sort((a, b) => (a.chainOrder || 0) - (b.chainOrder || 0));
+      if (inviteNotifs.length === 0) continue;
+
+      const firstInvite = inviteNotifs[0];
+      const slot = slots.find(s => s.id === firstInvite.slotId);
+      const course = courses.find(c => c.id === firstInvite.courseId);
+      const store = stores.find(s => s.id === course?.storeId);
+
+      if (storeId && store?.id !== storeId) continue;
+      if (courseId && course?.id !== courseId) continue;
+      if (fromDate && firstInvite.sentAt && new Date(firstInvite.sentAt) < fromDate) continue;
+      if (toDate && firstInvite.sentAt && new Date(firstInvite.sentAt) >= toDate) continue;
+
+      const firstInviteSentAt = firstInvite.sentAt;
+      const releasedCount = new Set(inviteNotifs.map(n => n.chainOrder)).size;
+
+      const byChain = new Map<number, Notification[]>();
+      for (const n of groupNotifs) {
+        const order = n.chainOrder || 0;
+        if (!byChain.has(order)) byChain.set(order, []);
+        byChain.get(order)!.push(n);
+      }
+
+      const steps: ReleaseChainStep[] = [];
+      let finalWinnerStudentId: string | null = null;
+      let finalWinnerStudentName: string | null = null;
+      let totalForwardCount = 0;
+
+      const orders = Array.from(byChain.keys()).sort((a, b) => a - b);
+      for (const order of orders) {
+        const chainNotifs = byChain.get(order)!;
+        const invite = chainNotifs.find(n => n.result !== '系统重发提醒') || chainNotifs[0];
+        const reminders = chainNotifs.filter(n => n.result === '系统重发提醒');
+
+        const student = students.find(s => s.id === invite.studentId);
+        const entry = repository.getWaitlistEntryById(invite.waitlistEntryId);
+
+        let finalResult: ReleaseChainStep['finalResult'] = null;
+        let finalResultAt: string | null = null;
+        let resultMessage: string | null = null;
+
+        if (entry) {
+          switch (entry.status) {
+            case 'confirmed':
+              finalResult = 'confirmed';
+              finalResultAt = entry.confirmedAt;
+              resultMessage = '学员确认补位成功';
+              finalWinnerStudentId = student?.id || null;
+              finalWinnerStudentName = student?.name || null;
+              break;
+            case 'declined':
+              finalResult = 'declined';
+              finalResultAt = entry.declinedAt;
+              resultMessage = '学员主动放弃';
+              totalForwardCount++;
+              break;
+            case 'expired':
+              finalResult = 'expired';
+              finalResultAt = invite.expireAt;
+              resultMessage = '超时未确认';
+              totalForwardCount++;
+              break;
+            case 'rescheduled':
+              finalResult = 'manual_ended';
+              finalResultAt = entry.rescheduledAt;
+              resultMessage = '学员改期，顺延下一位';
+              totalForwardCount++;
+              break;
+            case 'cancelled':
+              finalResult = 'manual_ended';
+              finalResultAt = entry.cancelledAt;
+              resultMessage = '前台手动结束';
+              totalForwardCount++;
+              break;
+            case 'notified':
+              finalResult = 'pending';
+              resultMessage = '待学员确认';
+              break;
+          }
+        }
+
+        steps.push({
+          order,
+          waitlistEntryId: invite.waitlistEntryId,
+          studentId: invite.studentId,
+          studentName: student?.name || '',
+          studentPhone: student?.phone || '',
+          firstNotificationSentAt: invite.sentAt,
+          finalResult,
+          finalResultAt,
+          resultMessage,
+          reminders: reminders.map(r => ({
+            notificationId: r.id,
+            sentAt: r.sentAt
+          }))
+        });
+      }
+
+      let finalStatus: ReleaseChainLedger['finalStatus'] = 'in_progress';
+      const lastStep = steps[steps.length - 1];
+      if (lastStep) {
+        if (lastStep.finalResult === 'confirmed') {
+          finalStatus = 'filled';
+        } else if (lastStep.finalResult !== null && lastStep.finalResult !== 'pending') {
+          finalStatus = 'partially_filled';
+        }
+      }
+
+      results.push({
+        releaseGroupId,
+        storeId: store?.id || '',
+        storeName: store?.name || '',
+        courseId: course?.id || '',
+        courseName: course?.name || '',
+        slotId: slot?.id || '',
+        slotStartTime: slot?.startTime || '',
+        slotEndTime: slot?.endTime || '',
+        releasedAt: firstInviteSentAt || '',
+        releasedCount,
+        steps,
+        totalForwardCount,
+        finalStatus,
+        finalWinnerStudentId,
+        finalWinnerStudentName
+      });
+    }
+
+    return results.sort((a, b) => b.releasedAt.localeCompare(a.releasedAt));
   }
 
   getPendingNotificationsDeduped(): NotificationDetail[] {

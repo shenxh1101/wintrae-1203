@@ -175,6 +175,20 @@ export class DataRepository {
       .sort((a, b) => a.queuePosition - b.queuePosition);
   }
 
+  getQueueSortedBySlotId(slotId: string): WaitlistEntry[] {
+    return this.data.waitlistEntries
+      .filter(e => e.slotId === slotId && (e.status === 'notified' || e.status === 'waiting'))
+      .sort((a, b) => {
+        const orderA = a.status === 'notified' ? 0 : 1;
+        const orderB = b.status === 'notified' ? 0 : 1;
+        if (orderA !== orderB) return orderA - orderB;
+        if (orderA === 0) {
+          return new Date(a.notifiedAt || '').getTime() - new Date(b.notifiedAt || '').getTime();
+        }
+        return new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime();
+      });
+  }
+
   getWaitlistByStudentId(studentId: string): WaitlistEntry[] {
     return this.data.waitlistEntries
       .filter(e => e.studentId === studentId)

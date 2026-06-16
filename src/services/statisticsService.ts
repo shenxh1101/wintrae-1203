@@ -1,5 +1,5 @@
 import { repository } from '../repository';
-import { WaitlistEntry, DailyTrendRow } from '../types';
+import { WaitlistEntry, DailyTrendRow, DailyFunnelRow, PendingHotspot, FunnelAnalysis, Notification } from '../types';
 
 export interface CourseHeatRank {
   courseId: string;
@@ -113,6 +113,8 @@ export interface OperationDashboard {
   byCourse: DashboardCourseRow[];
   byStore: DashboardStoreRow[];
   dailyTrend: DailyTrendRow[];
+  dailyFunnel: DailyFunnelRow[];
+  pendingHotspots: PendingHotspot[];
 }
 
 interface StatusCounter {
@@ -298,6 +300,8 @@ export class StatisticsService {
       dateTo
     );
 
+    const funnel = this.getFunnelAnalysis(storeId, courseId, dateFrom, dateTo);
+
     return {
       filters: {
         storeId: storeId || null,
@@ -320,7 +324,9 @@ export class StatisticsService {
       bySlot,
       byCourse,
       byStore,
-      dailyTrend
+      dailyTrend,
+      dailyFunnel: funnel.dailyFunnel,
+      pendingHotspots: funnel.pendingHotspots
     };
   }
 
@@ -569,5 +575,215 @@ export class StatisticsService {
       expiredNotifications,
       overallConversionRate: conversionRateOf(c)
     };
+  }
+
+  getFunnelAnalysis(
+    storeId?: string,
+    courseId?: string,
+    dateFrom?: string,
+    dateTo?: string,
+    hotspotDays: number = 7
+  ): FunnelAnalysis {
+    const stores = repository.getStores();
+    const courses = repository.getCourses();
+    const slots = repository.getCourseSlots();
+    const entries = repository.getWaitlistEntries();
+    const notifications = repository.getNotifications();
+
+    const courseStoreMap = new Map(courses.map(c => [c.id, c.storeId]));
+    const courseNameMap = new Map(courses.map(c => [c.id, c.name]));
+    const storeNameMap = new Map(stores.map(s => [s.id, s.name]));
+    const slotMap = new Map(slots.map(s => [s.id, s]));
+
+    const filterByFilter = (e: WaitlistEntry) => {
+      if (courseId && e.courseId !== courseId) return false;
+      const sId = courseStoreMap.get(e.courseId);
+      if (storeId && sId !== storeId) return false;
+      return true;
+    };
+    const filterNotifByFilter = (n: Notification) => {
+      if (courseId && n.courseId !== courseId) return false;
+      const sId = courseStoreMap.get(n.courseId);
+      if (storeId && sId !== storeId) return false;
+      return true;
+    };
+
+    const fromDate = dateFrom ? new Date(dateFrom) : null;
+    const toDate = dateTo ? new Date(dateTo) : null;
+    if (toDate) toDate.setDate(toDate.getDate() + 1);
+
+    const extractDay = (iso: string) => {
+      return iso.substring(0, 10);
+    };
+
+    const dayMap = new Map<string, {
+      joined: number;
+      reached: number;
+      confirmed: number;
+      declined: number;
+      expired: number;
+      rescheduled: number;
+      confirmedIds: Set<string>;
+      reachedIds: Set<string>;
+    }>();
+
+    const ensureDay = (day: string) => {
+      if (!dayMap.has(day)) {
+        dayMap.set(day, {
+          joined: 0, reached: 0, confirmed: 0, declined: 0,
+          expired: 0, rescheduled: 0,
+          confirmedIds: new Set(),
+          reachedIds: new Set()
+        });
+      }
+      return dayMap.get(day)!;
+    };
+
+    for (const e of entries) {
+      if (!filterByFilter(e)) continue;
+
+      const joinedDay = extractDay(e.joinedAt);
+      if (!(fromDate && new Date(e.joinedAt) < fromDate) && !(toDate && new Date(e.joinedAt) >= toDate)) {
+        ensureDay(joinedDay).joined++;
+      }
+
+      if (e.notifiedAt) {
+        const day = extractDay(e.notifiedAt);
+        if (!(fromDate && new Date(e.notifiedAt) < fromDate) && !(toDate && new Date(e.notifiedAt) >= toDate)) {
+          const bucket = ensureDay(day);
+          if (!bucket.reachedIds.has(e.id)) {
+            bucket.reachedIds.add(e.id);
+            bucket.reached++;
+          }
+        }
+      }
+
+      if (e.confirmedAt) {
+        const day = extractDay(e.confirmedAt);
+        if (!(fromDate && new Date(e.confirmedAt) < fromDate) && !(toDate && new Date(e.confirmedAt) >= toDate)) {
+          const bucket = ensureDay(day);
+          if (!bucket.confirmedIds.has(e.id)) {
+            bucket.confirmedIds.add(e.id);
+            bucket.confirmed++;
+          }
+        }
+      }
+      if (e.declinedAt) {
+        const day = extractDay(e.declinedAt);
+        if (!(fromDate && new Date(e.declinedAt) < fromDate) && !(toDate && new Date(e.declinedAt) >= toDate)) {
+          ensureDay(day).declined++;
+        }
+      }
+      if (e.status === 'expired' && e.expireAt) {
+        const day = extractDay(e.expireAt);
+        if (!(fromDate && new Date(e.expireAt) < fromDate) && !(toDate && new Date(e.expireAt) >= toDate)) {
+          ensureDay(day).expired++;
+        }
+      }
+      if (e.rescheduledAt) {
+        const day = extractDay(e.rescheduledAt);
+        if (!(fromDate && new Date(e.rescheduledAt) < fromDate) && !(toDate && new Date(e.rescheduledAt) >= toDate)) {
+          ensureDay(day).rescheduled++;
+        }
+      }
+    }
+
+    let allDates: string[] = [];
+    if (fromDate && toDate) {
+      const d = new Date(fromDate);
+      while (d < toDate) {
+        allDates.push(extractDay(d.toISOString()));
+        d.setDate(d.getDate() + 1);
+      }
+    } else {
+      allDates = Array.from(dayMap.keys());
+    }
+    allDates.sort();
+
+    const dailyFunnel: DailyFunnelRow[] = allDates.map(day => {
+      const bucket = dayMap.get(day) || { joined: 0, reached: 0, confirmed: 0, declined: 0, expired: 0, rescheduled: 0, confirmedIds: new Set(), reachedIds: new Set() };
+      const reachedRate = bucket.joined > 0 ? Math.round(bucket.reached / bucket.joined * 1000) / 10 : 0;
+      const conversionOfReached = bucket.reached > 0 ? Math.round(bucket.confirmed / bucket.reached * 1000) / 10 : 0;
+
+      const dayEnd = new Date(day + 'T23:59:59');
+      let pendingAtDayEnd = 0;
+      for (const e of entries) {
+        if (!filterByFilter(e)) continue;
+        const joined = new Date(e.joinedAt);
+        if (joined > dayEnd) continue;
+        if (e.status === 'waiting') {
+          pendingAtDayEnd++;
+          continue;
+        }
+        if (e.status === 'notified') {
+          pendingAtDayEnd++;
+          continue;
+        }
+        const closedAt = e.confirmedAt || e.declinedAt || e.expireAt || e.cancelledAt || e.rescheduledAt;
+        if (closedAt && new Date(closedAt) > dayEnd) {
+          pendingAtDayEnd++;
+        }
+      }
+
+      return {
+        date: day,
+        joined: bucket.joined,
+        reached: bucket.reached,
+        confirmed: bucket.confirmed,
+        declined: bucket.declined,
+        expired: bucket.expired,
+        rescheduled: bucket.rescheduled,
+        reachedRate,
+        conversionOfReached,
+        pendingAtDayEnd
+      };
+    });
+
+    const now = new Date();
+    const hotspotStart = new Date(now.getTime() - hotspotDays * 24 * 3600 * 1000);
+    const pendingNow = new Map<string, {
+      count: number;
+      totalWaitMs: number;
+      longestWaitMs: number;
+    }>();
+
+    for (const e of entries) {
+      if (e.status !== 'notified') continue;
+      if (!filterByFilter(e)) continue;
+      const notifiedAt = e.notifiedAt ? new Date(e.notifiedAt) : null;
+      if (notifiedAt && notifiedAt < hotspotStart) continue;
+      const slot = slotMap.get(e.slotId);
+      if (!slot) continue;
+      const waitMs = notifiedAt ? (now.getTime() - notifiedAt.getTime()) : 0;
+
+      if (!pendingNow.has(slot.id)) {
+        pendingNow.set(slot.id, { count: 0, totalWaitMs: 0, longestWaitMs: 0 });
+      }
+      const b = pendingNow.get(slot.id)!;
+      b.count++;
+      b.totalWaitMs += waitMs;
+      if (waitMs > b.longestWaitMs) b.longestWaitMs = waitMs;
+    }
+
+    const pendingHotspots: PendingHotspot[] = Array.from(pendingNow.entries())
+      .map(([slotId, v]) => {
+        const slot = slotMap.get(slotId)!;
+        const sId = courseStoreMap.get(slot.courseId) || '';
+        return {
+          slotId,
+          courseId: slot.courseId,
+          courseName: courseNameMap.get(slot.courseId) || '',
+          storeId: sId,
+          storeName: storeNameMap.get(sId) || '',
+          slotStartTime: slot.startTime,
+          slotEndTime: slot.endTime,
+          pendingCount: v.count,
+          avgWaitMinutes: Math.round(v.totalWaitMs / v.count / 60000),
+          longestWaitMinutes: Math.round(v.longestWaitMs / 60000)
+        };
+      })
+      .sort((a, b) => b.pendingCount - a.pendingCount || b.avgWaitMinutes - a.avgWaitMinutes);
+
+    return { dailyFunnel, pendingHotspots };
   }
 }

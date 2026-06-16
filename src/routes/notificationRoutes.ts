@@ -25,6 +25,20 @@ router.get('/ledger', (req: Request, res: Response) => {
   });
 });
 
+router.get('/release-chain-ledger', (req: Request, res: Response) => {
+  const storeId = (req.query.storeId as string) || undefined;
+  const courseId = (req.query.courseId as string) || undefined;
+  const dateFrom = (req.query.dateFrom as string) || undefined;
+  const dateTo = (req.query.dateTo as string) || undefined;
+
+  const ledger = notificationService.getReleaseChainLedger(storeId, courseId, dateFrom, dateTo);
+  res.json({
+    success: true,
+    data: ledger,
+    filters: { storeId: storeId || null, courseId: courseId || null, dateFrom: dateFrom || null, dateTo: dateTo || null }
+  });
+});
+
 router.get('/:id/detail', (req: Request, res: Response) => {
   const detail = notificationService.getNotificationDetail(req.params.id);
   if (!detail) {
