@@ -121,16 +121,54 @@ router.post('/:entryId/reschedule', (req: Request, res: Response) => {
   }
 });
 
+router.post('/batch-reschedule', (req: Request, res: Response) => {
+  try {
+    const { entryIds, newSlotId } = req.body;
+    if (!Array.isArray(entryIds) || entryIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'entryIds 必须是非空数组'
+      });
+    }
+    if (!newSlotId) {
+      return res.status(400).json({
+        success: false,
+        error: '缺少必填参数 newSlotId（目标时间段ID）'
+      });
+    }
+    const result = waitlistService.batchRescheduleWaitlist(entryIds, newSlotId);
+    res.json({
+      success: true,
+      data: {
+        successCount: result.results.length,
+        failedCount: result.failedItems.length,
+        results: result.results,
+        failedItems: result.failedItems
+      }
+    });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
 router.post('/slots/:slotId/release', (req: Request, res: Response) => {
   try {
     const { slotId } = req.params;
     const { count } = req.body;
 
-    if (count !== undefined && (typeof count !== 'number' || Number.isNaN(count))) {
-      return res.status(400).json({
-        success: false,
-        error: `参数 count 必须是数字，当前传入：${JSON.stringify(count)}`
-      });
+    if (count !== undefined) {
+      if (typeof count !== 'number' || Number.isNaN(count)) {
+        return res.status(400).json({
+          success: false,
+          error: `参数 count 必须是数字，当前传入：${JSON.stringify(count)}`
+        });
+      }
+      if (count === 0) {
+        return res.status(400).json({
+          success: false,
+          error: '释放数量不能为 0，请传入大于 0 的整数。如需释放名额请指定实际数量'
+        });
+      }
     }
 
     const releaseCount = count || 1;

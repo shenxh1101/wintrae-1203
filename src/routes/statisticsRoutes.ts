@@ -23,8 +23,10 @@ router.get('/operation-dashboard', (req: Request, res: Response) => {
   const storeId = (req.query.storeId as string) || undefined;
   const courseId = (req.query.courseId as string) || undefined;
   const slotId = (req.query.slotId as string) || undefined;
+  const dateFrom = (req.query.dateFrom as string) || undefined;
+  const dateTo = (req.query.dateTo as string) || undefined;
 
-  const dashboard = statisticsService.getOperationDashboard(storeId, courseId, slotId);
+  const dashboard = statisticsService.getOperationDashboard(storeId, courseId, slotId, dateFrom, dateTo);
   res.json({ success: true, data: dashboard });
 });
 

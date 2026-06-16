@@ -95,6 +95,8 @@ export interface OperationDashboard {
     storeId: string | null;
     courseId: string | null;
     slotId: string | null;
+    dateFrom: string | null;
+    dateTo: string | null;
   };
   summary: {
     totalCount: number;
@@ -148,36 +150,60 @@ function conversionRateOf(counter: StatusCounter): number {
 }
 
 export class StatisticsService {
-  getOperationDashboard(storeId?: string, courseId?: string, slotId?: string): OperationDashboard {
+  getOperationDashboard(
+    storeId?: string,
+    courseId?: string,
+    slotId?: string,
+    dateFrom?: string,
+    dateTo?: string
+  ): OperationDashboard {
     const stores = repository.getStores();
     const courses = repository.getCourses();
     const slots = repository.getCourseSlots();
     const allEntries = repository.getWaitlistEntries();
 
+    let validSlotIds: Set<string> | null = null;
+
+    if (storeId || courseId || slotId || dateFrom || dateTo) {
+      validSlotIds = new Set<string>();
+      for (const slot of slots) {
+        if (slotId && slot.id !== slotId) continue;
+        const course = courses.find(c => c.id === slot.courseId);
+        if (courseId && slot.courseId !== courseId) continue;
+        if (storeId && course && course.storeId !== storeId) continue;
+        if (dateFrom) {
+          const slotStart = new Date(slot.startTime);
+          const from = new Date(dateFrom);
+          if (slotStart < from) continue;
+        }
+        if (dateTo) {
+          const slotStart = new Date(slot.startTime);
+          const to = new Date(dateTo);
+          to.setDate(to.getDate() + 1);
+          if (slotStart >= to) continue;
+        }
+        validSlotIds.add(slot.id);
+      }
+    }
+
     let filteredEntries = allEntries;
-    if (slotId) {
-      filteredEntries = filteredEntries.filter(e => e.slotId === slotId);
-    } else if (courseId) {
-      filteredEntries = filteredEntries.filter(e => e.courseId === courseId);
-    } else if (storeId) {
-      const courseIdsOfStore = courses.filter(c => c.storeId === storeId).map(c => c.id);
-      filteredEntries = filteredEntries.filter(e => courseIdsOfStore.includes(e.courseId));
+    if (validSlotIds) {
+      filteredEntries = filteredEntries.filter(e => validSlotIds!.has(e.slotId));
     }
 
-    let filteredSlots = slots;
-    if (slotId) filteredSlots = filteredSlots.filter(s => s.id === slotId);
-    else if (courseId) filteredSlots = filteredSlots.filter(s => s.courseId === courseId);
-    else if (storeId) {
-      const courseIdsOfStore = courses.filter(c => c.storeId === storeId).map(c => c.id);
-      filteredSlots = filteredSlots.filter(s => courseIdsOfStore.includes(s.courseId));
-    }
+    const filteredSlots = validSlotIds
+      ? slots.filter(s => validSlotIds!.has(s.id))
+      : slots;
 
-    let filteredCourses = courses;
-    if (courseId) filteredCourses = filteredCourses.filter(c => c.id === courseId);
-    else if (storeId) filteredCourses = filteredCourses.filter(c => c.storeId === storeId);
+    const filteredCourseIds = new Set(filteredSlots.map(s => s.courseId));
+    const filteredCourses = validSlotIds
+      ? courses.filter(c => filteredCourseIds.has(c.id))
+      : courses;
 
-    let filteredStores = stores;
-    if (storeId) filteredStores = filteredStores.filter(s => s.id === storeId);
+    const filteredStoreIds = new Set(filteredCourses.map(c => c.storeId));
+    const filteredStores = validSlotIds
+      ? stores.filter(s => filteredStoreIds.has(s.id))
+      : stores;
 
     const summary = makeCounter();
     for (const e of filteredEntries) tally(summary, e);
@@ -269,7 +295,9 @@ export class StatisticsService {
       filters: {
         storeId: storeId || null,
         courseId: courseId || null,
-        slotId: slotId || null
+        slotId: slotId || null,
+        dateFrom: dateFrom || null,
+        dateTo: dateTo || null
       },
       summary: {
         totalCount: summary.total,

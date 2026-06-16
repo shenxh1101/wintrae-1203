@@ -188,11 +188,21 @@ export class WaitlistService {
       throw new Error(`您已在目标时间段的候补队列中（候补ID：${existingActive.id}）`);
     }
 
+    const wasNotified = oldEntry.status === 'notified';
     oldEntry.status = 'rescheduled';
     oldEntry.rescheduledAt = new Date().toISOString();
     repository.updateWaitlistEntry(oldEntry);
-    this.notificationService.markCancelledByWaitlistEntry(oldEntry.id);
+
+    if (wasNotified) {
+      this.notificationService.markDeclinedByWaitlistEntry(oldEntry.id);
+    } else {
+      this.notificationService.markCancelledByWaitlistEntry(oldEntry.id);
+    }
     this.rebalanceQueue(oldEntry.slotId);
+
+    if (wasNotified) {
+      this.notifyNextInQueue(oldEntry.slotId, 1);
+    }
 
     const waitingEntries = repository.getWaitingWaitlistBySlotId(newSlot.id);
     const nextPosition = waitingEntries.length + 1;
@@ -317,6 +327,38 @@ export class WaitlistService {
 
   getSlotWaitlist(slotId: string): WaitlistEntry[] {
     return repository.getWaitlistBySlotId(slotId);
+  }
+
+  batchRescheduleWaitlist(
+    entryIds: string[],
+    newSlotId: string
+  ): { results: WaitlistRescheduleResult[]; failedItems: { entryId: string; error: string }[] } {
+    if (!Array.isArray(entryIds) || entryIds.length === 0) {
+      throw new Error('entryIds 不能为空，请提供至少一个候补记录ID');
+    }
+
+    const newSlot = repository.getCourseSlotById(newSlotId);
+    if (!newSlot) {
+      throw new Error(`目标时间段不存在（slotId=${newSlotId}）`);
+    }
+
+    const results: WaitlistRescheduleResult[] = [];
+    const failedItems: { entryId: string; error: string }[] = [];
+
+    for (const entryId of entryIds) {
+      try {
+        const result = this.rescheduleWaitlist(entryId, newSlotId);
+        if (result) {
+          results.push(result);
+        } else {
+          failedItems.push({ entryId, error: '候补记录不存在' });
+        }
+      } catch (err: any) {
+        failedItems.push({ entryId, error: err.message });
+      }
+    }
+
+    return { results, failedItems };
   }
 
   private rebalanceQueue(slotId: string): void {
