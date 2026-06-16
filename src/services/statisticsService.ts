@@ -1,5 +1,5 @@
 import { repository } from '../repository';
-import { WaitlistEntry } from '../types';
+import { WaitlistEntry, DailyTrendRow } from '../types';
 
 export interface CourseHeatRank {
   courseId: string;
@@ -112,6 +112,7 @@ export interface OperationDashboard {
   bySlot: DashboardSlotRow[];
   byCourse: DashboardCourseRow[];
   byStore: DashboardStoreRow[];
+  dailyTrend: DailyTrendRow[];
 }
 
 interface StatusCounter {
@@ -291,6 +292,12 @@ export class StatisticsService {
     }
     byStore.sort((a, b) => b.totalCount - a.totalCount);
 
+    const dailyTrend = this.getDailyTrend(
+      filteredEntries,
+      dateFrom,
+      dateTo
+    );
+
     return {
       filters: {
         storeId: storeId || null,
@@ -312,8 +319,140 @@ export class StatisticsService {
       },
       bySlot,
       byCourse,
-      byStore
+      byStore,
+      dailyTrend
     };
+  }
+
+  getDailyTrend(
+    entries?: WaitlistEntry[],
+    dateFrom?: string,
+    dateTo?: string
+  ): DailyTrendRow[] {
+    const allEntries = entries || repository.getWaitlistEntries();
+
+    let fromDate: Date | null = null;
+    let toDate: Date | null = null;
+
+    if (dateFrom) fromDate = new Date(dateFrom);
+    if (dateTo) {
+      toDate = new Date(dateTo);
+      toDate.setDate(toDate.getDate() + 1);
+    }
+
+    if (!fromDate && !toDate) {
+      const allDates: Date[] = [];
+      for (const e of allEntries) {
+        if (e.joinedAt) allDates.push(new Date(e.joinedAt));
+        if (e.notifiedAt) allDates.push(new Date(e.notifiedAt));
+        if (e.confirmedAt) allDates.push(new Date(e.confirmedAt));
+        if (e.declinedAt) allDates.push(new Date(e.declinedAt));
+        if (e.expireAt) allDates.push(new Date(e.expireAt));
+        if (e.cancelledAt) allDates.push(new Date(e.cancelledAt));
+        if (e.rescheduledAt) allDates.push(new Date(e.rescheduledAt));
+      }
+      if (allDates.length > 0) {
+        const minDate = new Date(Math.min(...allDates.map(d => d.getTime())));
+        const maxDate = new Date(Math.max(...allDates.map(d => d.getTime())));
+        minDate.setHours(0, 0, 0, 0);
+        maxDate.setHours(0, 0, 0, 0);
+        fromDate = minDate;
+        toDate = new Date(maxDate);
+        toDate.setDate(toDate.getDate() + 1);
+      }
+    }
+
+    if (!fromDate) {
+      fromDate = new Date();
+      fromDate.setDate(fromDate.getDate() - 6);
+      fromDate.setHours(0, 0, 0, 0);
+    }
+    if (!toDate) {
+      toDate = new Date();
+      toDate.setHours(0, 0, 0, 0);
+      toDate.setDate(toDate.getDate() + 1);
+    }
+
+    type DailyKey = 'joined' | 'notified' | 'confirmed' | 'declined' | 'expired' | 'cancelled' | 'rescheduled';
+
+    const dayMap = new Map<string, Record<DailyKey, number>>();
+
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const fmtDate = (d: Date) =>
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+    const events: { date: string; type: DailyKey }[] = [];
+
+    for (const e of allEntries) {
+      if (e.joinedAt) {
+        const d = new Date(e.joinedAt);
+        if (d >= fromDate && d < toDate) events.push({ date: fmtDate(d), type: 'joined' });
+      }
+      if (e.notifiedAt) {
+        const d = new Date(e.notifiedAt);
+        if (d >= fromDate && d < toDate) events.push({ date: fmtDate(d), type: 'notified' });
+      }
+      if (e.confirmedAt) {
+        const d = new Date(e.confirmedAt);
+        if (d >= fromDate && d < toDate) events.push({ date: fmtDate(d), type: 'confirmed' });
+      }
+      if (e.declinedAt) {
+        const d = new Date(e.declinedAt);
+        if (d >= fromDate && d < toDate) events.push({ date: fmtDate(d), type: 'declined' });
+      }
+      if (e.status === 'expired' && e.expireAt) {
+        const d = new Date(e.expireAt);
+        if (d >= fromDate && d < toDate) events.push({ date: fmtDate(d), type: 'expired' });
+      }
+      if (e.cancelledAt) {
+        const d = new Date(e.cancelledAt);
+        if (d >= fromDate && d < toDate) events.push({ date: fmtDate(d), type: 'cancelled' });
+      }
+      if (e.rescheduledAt) {
+        const d = new Date(e.rescheduledAt);
+        if (d >= fromDate && d < toDate) events.push({ date: fmtDate(d), type: 'rescheduled' });
+      }
+    }
+
+    const zeroCounter: Record<DailyKey, number> = {
+      joined: 0, notified: 0, confirmed: 0,
+      declined: 0, expired: 0, cancelled: 0, rescheduled: 0
+    };
+
+    for (const ev of events) {
+      if (!dayMap.has(ev.date)) {
+        dayMap.set(ev.date, { ...zeroCounter });
+      }
+      const day = dayMap.get(ev.date)!;
+      day[ev.type]++;
+    }
+
+    const result: DailyTrendRow[] = [];
+    const cur = new Date(fromDate);
+    while (cur < toDate) {
+      const dateStr = fmtDate(cur);
+      const d = dayMap.get(dateStr) || { ...zeroCounter };
+      const total = d.joined + d.notified + d.confirmed + d.declined + d.expired + d.cancelled + d.rescheduled;
+      const completed = d.confirmed + d.declined + d.expired;
+      const conversionRate = completed > 0 ? Math.round((d.confirmed / completed) * 100) : 0;
+
+      result.push({
+        date: dateStr,
+        joined: d.joined,
+        notified: d.notified,
+        confirmed: d.confirmed,
+        declined: d.declined,
+        expired: d.expired,
+        cancelled: d.cancelled,
+        rescheduled: d.rescheduled,
+        totalEvents: total,
+        conversionRate
+      });
+
+      cur.setDate(cur.getDate() + 1);
+    }
+
+    return result;
   }
 
   getCourseHeatRank(limit: number = 10): CourseHeatRank[] {

@@ -4,8 +4,25 @@ import { notificationService, waitlistService } from '../services';
 const router = Router();
 
 router.get('/pending', (req: Request, res: Response) => {
-  const pending = notificationService.getPendingNotificationsWithRemaining();
-  res.json({ success: true, data: pending });
+  const dedup = req.query.dedup !== 'false';
+  const pending = dedup
+    ? notificationService.getPendingNotificationsDeduped()
+    : notificationService.getPendingNotificationsWithRemaining();
+  res.json({ success: true, data: pending, dedup });
+});
+
+router.get('/ledger', (req: Request, res: Response) => {
+  const storeId = (req.query.storeId as string) || undefined;
+  const courseId = (req.query.courseId as string) || undefined;
+  const dateFrom = (req.query.dateFrom as string) || undefined;
+  const dateTo = (req.query.dateTo as string) || undefined;
+
+  const ledger = notificationService.getNotificationLedger(storeId, courseId, dateFrom, dateTo);
+  res.json({
+    success: true,
+    data: ledger,
+    filters: { storeId: storeId || null, courseId: courseId || null, dateFrom: dateFrom || null, dateTo: dateTo || null }
+  });
 });
 
 router.get('/:id/detail', (req: Request, res: Response) => {

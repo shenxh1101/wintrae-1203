@@ -80,6 +80,89 @@ export interface WaitlistRescheduleResult {
   };
 }
 
+export interface NotificationTimelineItem {
+  id: string;
+  type: 'invite' | 'reminder' | 'result';
+  status: NotificationStatus;
+  sentAt: string;
+  result: string | null;
+  message: string;
+}
+
+export interface NotificationLedgerRow {
+  waitlistEntryId: string;
+  studentId: string;
+  studentName: string;
+  studentPhone: string;
+  courseId: string;
+  courseName: string;
+  storeId: string;
+  storeName: string;
+  slotId: string;
+  slotStartTime: string;
+  slotEndTime: string;
+  entryStatus: WaitlistStatus;
+  firstNotifiedAt: string | null;
+  finalResultAt: string | null;
+  finalResult: string | null;
+  reminderCount: number;
+  remainingSeconds: number | null;
+  isExpired: boolean;
+  timeline: NotificationTimelineItem[];
+}
+
+export interface BatchReschedulePreview {
+  sourceSlot: {
+    slotId: string;
+    courseName: string;
+    slotStartTime: string;
+    slotEndTime: string;
+    currentWaiting: number;
+    currentNotified: number;
+    afterWaiting: number;
+    afterNotified: number;
+  };
+  targetSlot: {
+    slotId: string;
+    courseName: string;
+    slotStartTime: string;
+    slotEndTime: string;
+    currentWaiting: number;
+    currentNotified: number;
+    afterWaiting: number;
+    afterNotified: number;
+  };
+  items: {
+    entryId: string;
+    studentName: string;
+    currentQueuePosition: number;
+    currentStatus: WaitlistStatus;
+    newQueuePosition: number;
+    willNotifyNext: boolean;
+    canReschedule: boolean;
+    errorMessage: string | null;
+  }[];
+  summary: {
+    totalSelected: number;
+    canReschedule: number;
+    cannotReschedule: number;
+    willNotifyInSource: number;
+  };
+}
+
+export interface DailyTrendRow {
+  date: string;
+  joined: number;
+  notified: number;
+  confirmed: number;
+  declined: number;
+  expired: number;
+  cancelled: number;
+  rescheduled: number;
+  totalEvents: number;
+  conversionRate: number;
+}
+
 export interface AppConfig {
   maxWaitlistPerStudent: number;
   notificationTimeoutMinutes: number;

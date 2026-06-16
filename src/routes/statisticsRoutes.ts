@@ -30,4 +30,12 @@ router.get('/operation-dashboard', (req: Request, res: Response) => {
   res.json({ success: true, data: dashboard });
 });
 
+router.get('/daily-trend', (req: Request, res: Response) => {
+  const dateFrom = (req.query.dateFrom as string) || undefined;
+  const dateTo = (req.query.dateTo as string) || undefined;
+
+  const trend = statisticsService.getDailyTrend(undefined, dateFrom, dateTo);
+  res.json({ success: true, data: trend, filters: { dateFrom: dateFrom || null, dateTo: dateTo || null } });
+});
+
 export default router;

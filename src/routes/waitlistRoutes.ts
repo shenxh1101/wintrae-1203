@@ -121,6 +121,28 @@ router.post('/:entryId/reschedule', (req: Request, res: Response) => {
   }
 });
 
+router.post('/batch-reschedule/preview', (req: Request, res: Response) => {
+  try {
+    const { entryIds, newSlotId } = req.body;
+    if (!Array.isArray(entryIds) || entryIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'entryIds 必须是非空数组'
+      });
+    }
+    if (!newSlotId) {
+      return res.status(400).json({
+        success: false,
+        error: '缺少必填参数 newSlotId（目标时间段ID）'
+      });
+    }
+    const preview = waitlistService.previewBatchReschedule(entryIds, newSlotId);
+    res.json({ success: true, data: preview });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
 router.post('/batch-reschedule', (req: Request, res: Response) => {
   try {
     const { entryIds, newSlotId } = req.body;

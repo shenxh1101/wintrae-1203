@@ -1,7 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import { repository } from '../repository';
 import {
-  Student, Course, CourseSlot, WaitlistEntry, Notification, WaitlistRescheduleResult
+  Student, Course, CourseSlot, WaitlistEntry, Notification,
+  WaitlistRescheduleResult, BatchReschedulePreview
 } from '../types';
 
 export interface WaitlistPositionInfo {
@@ -329,6 +330,120 @@ export class WaitlistService {
     return repository.getWaitlistBySlotId(slotId);
   }
 
+  previewBatchReschedule(
+    entryIds: string[],
+    newSlotId: string
+  ): BatchReschedulePreview {
+    if (!Array.isArray(entryIds) || entryIds.length === 0) {
+      throw new Error('entryIds 不能为空，请提供至少一个候补记录ID');
+    }
+
+    const newSlot = repository.getCourseSlotById(newSlotId);
+    if (!newSlot) {
+      throw new Error(`目标时间段不存在（slotId=${newSlotId}）`);
+    }
+
+    const newSlotCourse = repository.getCourseById(newSlot.courseId);
+
+    const entries = entryIds
+      .map(id => repository.getWaitlistEntryById(id))
+      .filter((e): e is WaitlistEntry => e !== undefined)
+      .sort((a, b) => a.queuePosition - b.queuePosition);
+
+    if (entries.length === 0) {
+      throw new Error('未找到有效的候补记录');
+    }
+
+    const sourceSlotId = entries[0].slotId;
+    const sourceSlot = repository.getCourseSlotById(sourceSlotId);
+    const sourceCourse = sourceSlot ? repository.getCourseById(sourceSlot.courseId) : undefined;
+
+    const sourceWaiting = repository.getWaitingWaitlistBySlotId(sourceSlotId);
+    const sourceNotified = repository.getActiveWaitlistBySlotId(sourceSlotId)
+      .filter(e => e.status === 'notified');
+
+    const targetWaiting = repository.getWaitingWaitlistBySlotId(newSlotId);
+    const targetNotified = repository.getActiveWaitlistBySlotId(newSlotId)
+      .filter(e => e.status === 'notified');
+
+    const items: BatchReschedulePreview['items'] = [];
+    let targetPos = targetWaiting.length + 1;
+    let willNotifyCount = 0;
+
+    for (const entry of entries) {
+      let canReschedule = true;
+      let errorMessage: string | null = null;
+
+      try {
+        if (entry.status !== 'waiting' && entry.status !== 'notified') {
+          throw new Error(`该候补当前状态为「${this.statusLabel(entry.status)}」，仅「排队中」和「待确认」可改期`);
+        }
+        if (newSlot.courseId !== entry.courseId) {
+          throw new Error('目标时间段不属于同一门课程');
+        }
+        if (newSlot.id === entry.slotId) {
+          throw new Error('目标时间段与当前候补时间段相同');
+        }
+        const existing = targetWaiting.find(e => e.studentId === entry.studentId);
+        if (existing) {
+          throw new Error('已在目标时间段的候补队列中');
+        }
+      } catch (err: any) {
+        canReschedule = false;
+        errorMessage = err.message;
+      }
+
+      const willNotifyNext = canReschedule && entry.status === 'notified';
+      if (willNotifyNext) willNotifyCount++;
+
+      const student = repository.getStudentById(entry.studentId);
+
+      items.push({
+        entryId: entry.id,
+        studentName: student?.name || '',
+        currentQueuePosition: entry.queuePosition,
+        currentStatus: entry.status,
+        newQueuePosition: canReschedule ? targetPos++ : -1,
+        willNotifyNext,
+        canReschedule,
+        errorMessage
+      });
+    }
+
+    const movingCount = items.filter(i => i.canReschedule).length;
+    const movingNotifiedCount = items.filter(i => i.canReschedule && i.currentStatus === 'notified').length;
+
+    return {
+      sourceSlot: {
+        slotId: sourceSlotId,
+        courseName: sourceCourse?.name || '',
+        slotStartTime: sourceSlot?.startTime || '',
+        slotEndTime: sourceSlot?.endTime || '',
+        currentWaiting: sourceWaiting.length,
+        currentNotified: sourceNotified.length,
+        afterWaiting: Math.max(0, sourceWaiting.length - movingCount + movingNotifiedCount),
+        afterNotified: sourceNotified.length - movingNotifiedCount + willNotifyCount,
+      },
+      targetSlot: {
+        slotId: newSlotId,
+        courseName: newSlotCourse?.name || '',
+        slotStartTime: newSlot.startTime,
+        slotEndTime: newSlot.endTime,
+        currentWaiting: targetWaiting.length,
+        currentNotified: targetNotified.length,
+        afterWaiting: targetWaiting.length + movingCount,
+        afterNotified: targetNotified.length,
+      },
+      items,
+      summary: {
+        totalSelected: entryIds.length,
+        canReschedule: items.filter(i => i.canReschedule).length,
+        cannotReschedule: items.filter(i => !i.canReschedule).length,
+        willNotifyInSource: willNotifyCount,
+      }
+    };
+  }
+
   batchRescheduleWaitlist(
     entryIds: string[],
     newSlotId: string
@@ -342,19 +457,30 @@ export class WaitlistService {
       throw new Error(`目标时间段不存在（slotId=${newSlotId}）`);
     }
 
+    const entries = entryIds
+      .map(id => ({ id, entry: repository.getWaitlistEntryById(id) }))
+      .filter((x): x is { id: string; entry: WaitlistEntry } => x.entry !== undefined)
+      .sort((a, b) => a.entry.queuePosition - b.entry.queuePosition);
+
     const results: WaitlistRescheduleResult[] = [];
     const failedItems: { entryId: string; error: string }[] = [];
 
-    for (const entryId of entryIds) {
+    for (const { id, entry } of entries) {
       try {
-        const result = this.rescheduleWaitlist(entryId, newSlotId);
+        const result = this.rescheduleWaitlist(id, newSlotId);
         if (result) {
           results.push(result);
         } else {
-          failedItems.push({ entryId, error: '候补记录不存在' });
+          failedItems.push({ entryId: id, error: '候补记录不存在' });
         }
       } catch (err: any) {
-        failedItems.push({ entryId, error: err.message });
+        failedItems.push({ entryId: id, error: err.message });
+      }
+    }
+
+    for (const id of entryIds) {
+      if (!entries.find(x => x.id === id)) {
+        failedItems.push({ entryId: id, error: '候补记录不存在' });
       }
     }
 

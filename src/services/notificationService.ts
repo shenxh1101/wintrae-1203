@@ -1,6 +1,9 @@
 import { v4 as uuidv4 } from 'uuid';
 import { repository } from '../repository';
-import { WaitlistEntry, Notification, NotificationChannel, NotificationStatus, Student, Course, CourseSlot } from '../types';
+import {
+  WaitlistEntry, Notification, NotificationChannel, NotificationStatus,
+  Student, Course, CourseSlot, NotificationLedgerRow, NotificationTimelineItem
+} from '../types';
 
 export interface NotificationDetail extends Notification {
   remainingSeconds: number | null;
@@ -254,6 +257,130 @@ export class NotificationService {
 
   getAllNotifications(): Notification[] {
     return repository.getNotifications();
+  }
+
+  getNotificationLedger(
+    storeId?: string,
+    courseId?: string,
+    dateFrom?: string,
+    dateTo?: string
+  ): NotificationLedgerRow[] {
+    const stores = repository.getStores();
+    const courses = repository.getCourses();
+    const slots = repository.getCourseSlots();
+    const students = repository.getStudents();
+    const entries = repository.getWaitlistEntries();
+    const notifications = repository.getNotifications();
+
+    const courseToStore = new Map(courses.map(c => [c.id, c.storeId]));
+
+    let validSlotIds: Set<string> | null = null;
+    if (storeId || courseId) {
+      validSlotIds = new Set<string>();
+      for (const slot of slots) {
+        if (courseId && slot.courseId !== courseId) continue;
+        const sId = courseToStore.get(slot.courseId);
+        if (storeId && sId !== storeId) continue;
+        validSlotIds.add(slot.id);
+      }
+    }
+
+    const fromDate = dateFrom ? new Date(dateFrom) : null;
+    const toDate = dateTo ? new Date(dateTo) : null;
+    if (toDate) toDate.setDate(toDate.getDate() + 1);
+
+    const result: NotificationLedgerRow[] = [];
+
+    for (const entry of entries) {
+      if (validSlotIds && !validSlotIds.has(entry.slotId)) continue;
+
+      const firstNotifiedAt = entry.notifiedAt;
+      if (fromDate && firstNotifiedAt && new Date(firstNotifiedAt) < fromDate) continue;
+      if (toDate && firstNotifiedAt && new Date(firstNotifiedAt) >= toDate) continue;
+
+      const entryNotifications = notifications.filter(n => n.waitlistEntryId === entry.id);
+      if (entryNotifications.length === 0) continue;
+
+      const student = students.find(s => s.id === entry.studentId);
+      const course = courses.find(c => c.id === entry.courseId);
+      const store = stores.find(s => s.id === course?.storeId);
+      const slot = slots.find(s => s.id === entry.slotId);
+
+      const timeline: NotificationTimelineItem[] = [];
+      const sortedNotifs = [...entryNotifications].sort((a, b) =>
+        (a.sentAt || '').localeCompare(b.sentAt || '')
+      );
+
+      for (const n of sortedNotifs) {
+        let type: 'invite' | 'reminder' | 'result' = 'result';
+        if (n.result === '系统重发提醒') type = 'reminder';
+        else if (n.result === null && n.status === 'sent') type = 'invite';
+
+        timeline.push({
+          id: n.id,
+          type,
+          status: n.status,
+          sentAt: n.sentAt || '',
+          result: n.result,
+          message: n.message
+        });
+      }
+
+      const reminderCount = entryNotifications.filter(n => n.result === '系统重发提醒').length;
+      const finalNotif = sortedNotifs[sortedNotifs.length - 1];
+      const finalResult = finalNotif?.result || null;
+      const finalResultAt = finalNotif?.declinedAt || finalNotif?.confirmedAt || finalNotif?.sentAt || null;
+
+      const now = new Date();
+      let remainingSeconds: number | null = null;
+      let isExpired = false;
+      if (entry.status === 'notified' && entry.expireAt) {
+        const diff = new Date(entry.expireAt).getTime() - now.getTime();
+        remainingSeconds = Math.max(0, Math.floor(diff / 1000));
+        if (diff <= 0) isExpired = true;
+      }
+
+      result.push({
+        waitlistEntryId: entry.id,
+        studentId: entry.studentId,
+        studentName: student?.name || '',
+        studentPhone: student?.phone || '',
+        courseId: entry.courseId,
+        courseName: course?.name || '',
+        storeId: store?.id || '',
+        storeName: store?.name || '',
+        slotId: entry.slotId,
+        slotStartTime: slot?.startTime || '',
+        slotEndTime: slot?.endTime || '',
+        entryStatus: entry.status,
+        firstNotifiedAt,
+        finalResultAt,
+        finalResult,
+        reminderCount,
+        remainingSeconds,
+        isExpired,
+        timeline
+      });
+    }
+
+    return result.sort((a, b) =>
+      (b.firstNotifiedAt || '').localeCompare(a.firstNotifiedAt || '')
+    );
+  }
+
+  getPendingNotificationsDeduped(): NotificationDetail[] {
+    const all = this.getPendingNotificationsWithRemaining();
+    const seen = new Map<string, NotificationDetail>();
+
+    for (const n of all) {
+      const existing = seen.get(n.waitlistEntryId);
+      if (!existing) {
+        seen.set(n.waitlistEntryId, n);
+      }
+    }
+
+    return Array.from(seen.values())
+      .sort((a, b) => (a.remainingSeconds ?? Infinity) - (b.remainingSeconds ?? Infinity));
   }
 
   private buildMessage(student: Student | undefined, course: Course | undefined, slot: CourseSlot | undefined, expireAt: Date): string {

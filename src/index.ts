@@ -33,6 +33,8 @@ app.get('/', (req, res) => {
         decline: 'POST /api/waitlist/:entryId/decline',
         confirm: 'POST /api/waitlist/:entryId/confirm',
         reschedule: 'POST /api/waitlist/:entryId/reschedule',
+        batchReschedulePreview: 'POST /api/waitlist/batch-reschedule/preview',
+        batchReschedule: 'POST /api/waitlist/batch-reschedule',
         release: 'POST /api/waitlist/slots/:slotId/release',
         position: 'GET /api/waitlist/entries/:entryId/position',
         studentEntries: 'GET /api/waitlist/students/:studentId/entries',
@@ -42,14 +44,20 @@ app.get('/', (req, res) => {
       notifications: {
         list: 'GET /api/notifications',
         byId: 'GET /api/notifications/:id',
+        detail: 'GET /api/notifications/:id/detail',
         byStudent: 'GET /api/notifications/students/:studentId',
-        byWaitlist: 'GET /api/notifications/waitlist/:entryId'
+        byWaitlist: 'GET /api/notifications/waitlist/:entryId',
+        pending: 'GET /api/notifications/pending?dedup=true',
+        ledger: 'GET /api/notifications/ledger?storeId=&courseId=&dateFrom=&dateTo=',
+        resendReminder: 'POST /api/notifications/waitlist/:entryId/resend-reminder',
+        forceDecline: 'POST /api/notifications/waitlist/:entryId/force-decline'
       },
       statistics: {
         courseHeatRank: 'GET /api/statistics/course-heat-rank',
         storeConversions: 'GET /api/statistics/store-conversions',
         overview: 'GET /api/statistics/overview',
-        operationDashboard: 'GET /api/statistics/operation-dashboard?storeId=&courseId=&slotId='
+        operationDashboard: 'GET /api/statistics/operation-dashboard?storeId=&courseId=&slotId=&dateFrom=&dateTo=',
+        dailyTrend: 'GET /api/statistics/daily-trend?dateFrom=&dateTo='
       }
     }
   });
